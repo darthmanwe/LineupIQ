@@ -1,0 +1,27 @@
+# Secrets -- NEVER commit these
+.env
+*.env
+kaggle.json
+
+# Data files -- too large for Git
+data/
+*.csv
+*.tar.xz
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
