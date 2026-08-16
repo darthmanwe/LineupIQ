@@ -1,3 +1,21 @@
+> **SUPERSEDED — kept verbatim, deliberately.**
+>
+> This is the original pre-implementation Snowflake design, unedited. It is retained
+> because the reasoning is worth reading and because a superseded document plus a
+> written rationale is more honest than a quietly-updated one.
+>
+> Sections 3 (Cortex services) and 5 (Streamlit in Snowflake) were replaced under a
+> portability constraint: the demo has to be publicly clickable, free, and runnable
+> from a clean clone, and a $400/30-day Enterprise trial satisfies none of those.
+> [`01-portable-rearchitecture.md`](01-portable-rearchitecture.md) states what
+> replaced each service, why, **and what was lost**.
+>
+> Several technical claims in here are also wrong, and the rearchitecture document
+> names them rather than burying them — including one arithmetic error in the
+> headline EPSA formula and one internal contradiction about the model.
+
+---
+
 # LineupIQ -- System Design Document
 
 **Author**: LineupIQ Team

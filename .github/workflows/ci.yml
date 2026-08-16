@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Belt and braces with the conftest scrub: even if a test tried to reach
+# Anthropic, there is no key in the environment to reach it with.
+env:
+  ANTHROPIC_API_KEY: ""
+  LINEUPIQ_LLM_MAX_CALLS: "0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  js-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx eslint .
+      - run: npx prettier --check .
+      - run: npm --workspace apps/api run typecheck
+      - run: npm --workspace apps/web run typecheck
+
+  # Both operating systems from day one. The author develops on Windows and CI
+  # runs on Linux; a path or line-ending assumption that only breaks on one of
+  # them is exactly the bug that surfaces the week before it matters.
+  js-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # Runs inside workerd, not Node. A green suite here has exercised the
+      # runtime that actually serves requests.
+      - run: npm --workspace apps/api run test
+
+  # Proves the deployable artifact builds. Without this, a broken export is
+  # only discovered at deploy time, which is the worst moment to discover it.
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --workspace apps/web run build
+      - name: Assert the static export produced every page
+        run: |
+          for page in index lineup/index trade/index evidence/index quality/index 404; do
+            test -f "apps/web/out/${page}.html" || { echo "missing apps/web/out/${page}.html"; exit 1; }
+          done
+          echo "all pages exported"
+
+  py-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+
+  py-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --extra dev
+      # Bare pytest is offline and free by marker gating. If this job ever needs
+      # a network or a key to pass, the "clone and verify" claim has broken.
+      - run: uv run pytest -q
+# ---------------------------------------------------------------------------
+# Jobs that land with the milestone that makes them meaningful. They are listed
+# here rather than added as always-green stubs, because a job that passes
+# without checking anything is worse than an absent one.
+#
+#   M2  data-contract          re-derive every committed gold checksum, offline
+#   M2  stint-oracle           re-run minutes + oracle agreement, assert the
+#                              published rates
+#   M3  repro                  `train --verify`; fail if any metric moved >1e-6
+#   M3  serve-parity           Python vs TypeScript scorer agree to 1e-9
+#   M4  no-unsupported-numbers walk low-support fixtures through every scoring
+#                              route; assert 422 or a null point estimate, and
+#                              that the pre-registered threshold hash is intact
+#   M6  groundedness           re-score committed narratives against evidence
+#                              rebuilt from gold, with no key and no network
+#   M7  snowflake-sql-lint     sqlfluff over sql/snowflake, dialect=snowflake
+#   M7  schema-parity          DDL columns must match the parquet contract
+#   M8  readme-is-current      `report check`; a stale README fails the build
+# ---------------------------------------------------------------------------

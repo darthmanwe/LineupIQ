@@ -1,0 +1,136 @@
+{
+  "columns": [
+    "game_id",
+    "event_num",
+    "shooter_id",
+    "team_id",
+    "period",
+    "seconds_remaining",
+    "loc_x",
+    "loc_y",
+    "shot_distance_ft",
+    "action_type",
+    "shot_type_raw",
+    "feed_zone_basic",
+    "made",
+    "zone_id",
+    "is_three",
+    "season",
+    "shot_points",
+    "home_lineup",
+    "away_lineup",
+    "lineup_quality",
+    "lineup_method",
+    "lineup_for",
+    "lineup_against",
+    "stint_quality",
+    "lineup_for_hash",
+    "lineup_against_hash"
+  ],
+  "content_sha256": "311fa526227e254256353d953b543988b32c6f5f3c44bc91fb68ae078cadd20c",
+  "dtypes": {
+    "action_type": "String",
+    "away_lineup": "List(Int64)",
+    "event_num": "Int64",
+    "feed_zone_basic": "String",
+    "game_id": "String",
+    "home_lineup": "List(Int64)",
+    "is_three": "Boolean",
+    "lineup_against": "List(Int64)",
+    "lineup_against_hash": "String",
+    "lineup_for": "List(Int64)",
+    "lineup_for_hash": "String",
+    "lineup_method": "String",
+    "lineup_quality": "String",
+    "loc_x": "Float64",
+    "loc_y": "Float64",
+    "made": "Int64",
+    "period": "Int64",
+    "season": "Int64",
+    "seconds_remaining": "Int64",
+    "shooter_id": "Int64",
+    "shot_distance_ft": "Float64",
+    "shot_points": "Int64",
+    "shot_type_raw": "String",
+    "stint_quality": "String",
+    "team_id": "Int64",
+    "zone_id": "String"
+  },
+  "null_rates": {
+    "action_type": 0.0,
+    "away_lineup": 0.000258,
+    "event_num": 0.0,
+    "feed_zone_basic": 0.0,
+    "game_id": 0.0,
+    "home_lineup": 0.000258,
+    "is_three": 0.0,
+    "lineup_against": 0.000258,
+    "lineup_against_hash": 0.000258,
+    "lineup_for": 0.000258,
+    "lineup_for_hash": 0.000258,
+    "lineup_method": 1.3e-05,
+    "lineup_quality": 1.3e-05,
+    "loc_x": 0.0,
+    "loc_y": 0.0,
+    "made": 0.0,
+    "period": 0.0,
+    "season": 0.0,
+    "seconds_remaining": 0.0,
+    "shooter_id": 0.0,
+    "shot_distance_ft": 0.0,
+    "shot_points": 0.0,
+    "shot_type_raw": 0.0,
+    "stint_quality": 0.0,
+    "team_id": 0.0,
+    "zone_id": 0.0
+  },
+  "numeric_ranges": {
+    "event_num": [
+      4.0,
+      882.0
+    ],
+    "loc_x": [
+      -250.0,
+      250.0
+    ],
+    "loc_y": [
+      -51.0,
+      842.0
+    ],
+    "made": [
+      0.0,
+      1.0
+    ],
+    "period": [
+      1.0,
+      6.0
+    ],
+    "season": [
+      2023.0,
+      2023.0
+    ],
+    "seconds_remaining": [
+      0.0,
+      717.0
+    ],
+    "shooter_id": [
+      2544.0,
+      1642013.0
+    ],
+    "shot_distance_ft": [
+      0.0,
+      84.0
+    ],
+    "shot_points": [
+      2.0,
+      3.0
+    ],
+    "team_id": [
+      1610612737.0,
+      1610612766.0
+    ]
+  },
+  "partition": "season=2023",
+  "rows": 232541,
+  "table": "shot_facts"
+}

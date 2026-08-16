@@ -1,0 +1,25 @@
+node_modules/
+.next/
+out/
+.wrangler/
+dist/
+data/
+package-lock.json
+uv.lock
+
+# Python is formatted by ruff, not prettier.
+services/ml/
+
+# Generated and rewritten by `next dev` / `next build` on every run.
+apps/web/next-env.d.ts
+
+# Prose docs are hand-formatted. Prettier pads markdown table cells to the
+# widest row, which turns a readable table into 400-character lines and makes
+# every future edit an unreviewable diff.
+docs/
+
+# README.md is partly tool-generated: `lineupiq report render` owns everything
+# between the lineupiq:begin/end sentinels. Letting prettier reformat those
+# blocks puts two tools in charge of the same bytes -- prettier rewrites them,
+# `report check` then declares them stale, and CI fails on a file nobody edited.
+README.md

@@ -1,0 +1,24 @@
+{
+  "columns": [
+    "player_id",
+    "player_name"
+  ],
+  "content_sha256": "2c80314a2d2623ad062f71fb3be50b537d7d73755b280cde9f970608046d9166",
+  "dtypes": {
+    "player_id": "Int64",
+    "player_name": "String"
+  },
+  "null_rates": {
+    "player_id": 0.0,
+    "player_name": 0.0
+  },
+  "numeric_ranges": {
+    "player_id": [
+      2544.0,
+      1641645.0
+    ]
+  },
+  "partition": "season=2022",
+  "rows": 541,
+  "table": "dim_player"
+}

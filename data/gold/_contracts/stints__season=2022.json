@@ -1,0 +1,61 @@
+{
+  "columns": [
+    "game_id",
+    "period",
+    "stint_index",
+    "start_seconds_remaining",
+    "end_seconds_remaining",
+    "duration_seconds",
+    "home_lineup",
+    "away_lineup",
+    "stint_quality"
+  ],
+  "content_sha256": "ab4edaf26d451b9234f92c91727f9b79768caddac9284b66c06703efeec250bb",
+  "dtypes": {
+    "away_lineup": "List(Int64)",
+    "duration_seconds": "Int64",
+    "end_seconds_remaining": "Int64",
+    "game_id": "String",
+    "home_lineup": "List(Int64)",
+    "period": "Int64",
+    "start_seconds_remaining": "Int64",
+    "stint_index": "Int64",
+    "stint_quality": "String"
+  },
+  "null_rates": {
+    "away_lineup": 0.0,
+    "duration_seconds": 0.0,
+    "end_seconds_remaining": 0.0,
+    "game_id": 0.0,
+    "home_lineup": 0.0,
+    "period": 0.0,
+    "start_seconds_remaining": 0.0,
+    "stint_index": 0.0,
+    "stint_quality": 0.0
+  },
+  "numeric_ranges": {
+    "duration_seconds": [
+      1.0,
+      601.0
+    ],
+    "end_seconds_remaining": [
+      0.0,
+      719.0
+    ],
+    "period": [
+      1.0,
+      6.0
+    ],
+    "start_seconds_remaining": [
+      1.0,
+      720.0
+    ],
+    "stint_index": [
+      0.0,
+      17.0
+    ]
+  },
+  "partition": "season=2022",
+  "rows": 39320,
+  "table": "stints"
+}

@@ -1,3 +1,17 @@
+> **OPTIONAL ADAPTER — not required for anything.**
+>
+> Nothing in this repository requires a Snowflake account. Nothing in the live demo
+> path touches Snowflake. `uv sync && pytest && lineupiq verify` reproduces every
+> published number with no warehouse, no API key, and no network.
+>
+> This is the setup guide for the *optional* Snowflake adapter. The versioned DDL it
+> describes lives in [`../../sql/snowflake/`](../../sql/snowflake/) and is linted as
+> real Snowflake SQL on every push, so the schema is verifiable whether or not an
+> account exists. What has actually been executed against a live account — as opposed
+> to designed — is recorded in [`SNOWFLAKE_PROVENANCE.md`](SNOWFLAKE_PROVENANCE.md).
+
+---
+
 # LineupIQ -- Manual Setup Guide
 
 Complete this guide before any implementation code is written. Every section ends with

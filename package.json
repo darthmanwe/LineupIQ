@@ -1,0 +1,37 @@
+{
+  "name": "lineupiq",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NBA lineup and trade forecasting with a published refusal contract",
+  "license": "MIT",
+  "author": "Kutlu Mizrak",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darthmanwe/LineupIQ.git"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=11"
+  },
+  "scripts": {
+    "dev": "npm --workspace apps/api run dev",
+    "build": "npm --workspace apps/web run build",
+    "test": "npm --workspaces --if-present run test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm --workspaces --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.1",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.9.0",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.67.0"
+  }
+}

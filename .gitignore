@@ -1,20 +1,54 @@
 # Secrets -- NEVER commit these
 .env
 *.env
+!.env.example
 kaggle.json
+.snowsql/
 
-# Data files -- too large for Git
-data/
-*.csv
-*.tar.xz
-*.parquet
+# Personal permission overrides (the committed .claude/settings.json is the shared one)
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# Data
+#
+# Only bronze and silver are ignored. Gold IS committed -- that is what lets a
+# clean clone reproduce every published number offline, with no network, no
+# API key, and no Cloudflare account. Do not add a blanket `data/` or
+# `*.parquet` rule here: it would silently break `lineupiq verify` and the
+# `data-contract` CI job, and the failure mode is a green build on a machine
+# that has the files locally.
+# ---------------------------------------------------------------------------
+data/bronze/
+data/silver/
+data/d1/load.sql
+data/vectors/*.ndjson
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / Next.js / Cloudflare
+node_modules/
+.next/
+out/
+.wrangler/
+*.tsbuildinfo
+.turbo/
+
+# Playwright media capture scratch
+test-results/
+playwright-report/
 
 # IDE
 .vscode/

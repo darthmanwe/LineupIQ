@@ -1,0 +1,22 @@
+# Normalise line endings on checkin.
+#
+# This is not cosmetic. Gold tables carry committed content hashes, and the
+# `data-contract` CI job re-derives them on both ubuntu and windows runners.
+# Without this, a CRLF checkout changes the bytes of every text input and the
+# checksums flap between platforms -- a failure that looks like data corruption
+# and is actually git.
+* text=auto eol=lf
+
+# Binary artifacts: never touch these.
+*.parquet binary
+*.png binary
+*.gif binary
+*.tar.xz binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Generated -- collapse in PR diffs so review stays on the source of truth.
+package-lock.json linguist-generated=true -diff
+uv.lock          linguist-generated=true -diff
+data/parity/*.json linguist-generated=true -diff

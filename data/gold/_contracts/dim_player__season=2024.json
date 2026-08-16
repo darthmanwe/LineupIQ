@@ -1,0 +1,24 @@
+{
+  "columns": [
+    "player_id",
+    "player_name"
+  ],
+  "content_sha256": "50eb8acacddec46820026059fc1148d0d0e57c29fb917e992ebdf9539aacf85c",
+  "dtypes": {
+    "player_id": "Int64",
+    "player_name": "String"
+  },
+  "null_rates": {
+    "player_id": 0.0,
+    "player_name": 0.0
+  },
+  "numeric_ranges": {
+    "player_id": [
+      2544.0,
+      1642530.0
+    ]
+  },
+  "partition": "season=2024",
+  "rows": 569,
+  "table": "dim_player"
+}

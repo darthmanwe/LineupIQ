@@ -1,0 +1,66 @@
+name = "lineupiq-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# There are deliberately NO top-level bindings.
+#
+# A bare `wrangler deploy` must fail rather than quietly ship against whatever
+# database happens to be first in the file. Every binding lives under a named
+# environment, so deploying is always an explicit choice of target:
+#
+#     wrangler deploy --env production
+#
+# The sibling project learned this the hard way -- its production D1 still
+# holds seed rows from a version that no longer exists.
+# ---------------------------------------------------------------------------
+
+[observability]
+enabled = true
+
+# Static assets: the Next.js export is served by this same Worker. Requests to
+# assets are free, unmetered, and never invoke the Worker -- only /api/* counts
+# against the request budget.
+[assets]
+directory = "../web/out"
+binding = "ASSETS"
+
+# Next's static export writes a real index.html per route and its own 404.html,
+# so "404-page" is correct here. "single-page-application" is for client-side
+# routers and actively breaks this setup: it makes the asset router answer
+# every unmatched path, including the API.
+not_found_handling = "404-page"
+
+# Both patterns are required. "/api/*" does NOT match "/api" itself -- with only
+# the wildcard, the registry endpoint falls through to the asset router and
+# returns 404 while every deeper route works, which reads as a routing bug and
+# is genuinely hard to spot.
+run_worker_first = ["/api", "/api/*"]
+
+# --- development -----------------------------------------------------------
+# Local only. `wrangler dev` needs no account and no login.
+[env.dev]
+vars = { ENVIRONMENT = "dev", SNAPSHOT = "unbuilt" }
+
+# --- production ------------------------------------------------------------
+# Bindings are added in the milestone that first needs them:
+#   M2  d1_databases      -> serving tables
+#   M6  vectorize + ai    -> hybrid retrieval
+#
+# Left commented rather than filled with placeholder ids, because a zeroed id
+# fails at request time with an unhelpful error instead of at deploy time.
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+# [[env.production.d1_databases]]
+# binding = "DB"
+# database_name = "lineupiq-db"
+# database_id = "<set by `wrangler d1 create lineupiq-db`>"
+
+# [[env.production.vectorize]]
+# binding = "LINEUP_VECTORS"
+# index_name = "lineupiq-lineups"
+
+# [env.production.ai]
+# binding = "AI"

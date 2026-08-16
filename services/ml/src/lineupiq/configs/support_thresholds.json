@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "PRE-REGISTERED. These floors were fixed before any lineup-level result was",
+    "computed, and CI asserts this file's hash is unchanged. Loosening a floor to",
+    "make a demo look better is therefore a build failure, not a judgement call.",
+    "",
+    "The possession floor comes from arithmetic, not taste. A lineup's offensive",
+    "rating has a standard error of about 115/sqrt(n) per 100 possessions. At 200",
+    "possessions that is +/-8.1, against a true between-lineup spread of roughly",
+    "6-8. Below 200 the measurement is noisier than the entire signal, so a point",
+    "estimate there is not a weak claim -- it is a meaningless one."
+  ],
+  "version": 1,
+  "reportable": {
+    "lineup_possessions": 200,
+    "min_player_attempts": 100
+  },
+  "directional": {
+    "lineup_possessions": 25,
+    "min_player_attempts": 30
+  },
+  "shot_model": {
+    "min_zone_attempts_for_point_estimate": 10,
+    "conformal_bin_min_n": 50
+  },
+  "trade": {
+    "min_reportable_minutes_share": 0.6
+  }
+}
