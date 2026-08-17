@@ -72,8 +72,8 @@ Two things follow, and they shape the whole project:
 | Share of played time covered by reportable lineups | 50.4% |
 
 At the 200-possession floor a lineup's offensive rating carries a standard error
-of roughly Ã‚Â±8 per 100 possessions, against a true between-lineup spread of about 6Ã¢â‚¬â€œ8.
-So **99.0% of lineups cannot support a point estimate at all** Ã¢â‚¬â€ which
+of roughly +/-8 per 100 possessions, against a true between-lineup spread of about 6-8.
+So **99.0% of lineups cannot support a point estimate at all** -- which
 is why the refusal contract is a feature of the API rather than an error path.
 <!-- lineupiq:end id=results.estimability -->
 
@@ -109,6 +109,36 @@ Two details carry most of the accuracy:
   is substituted on the same tick; insisting on one order rejects the true starting five.
   That single detail moved exact solves from 39% to 98%.
 
+## The possession layer, and why it exists
+
+The negative result above is a **target mismatch**, not a modelling failure. Spacing does
+not make a player shoot better from the corner; it gets him more open corner threes instead
+of contested mid-range. Lineup effects live in shot *selection* and in what a possession is
+worth — not in conversion once a shot is taken. Measuring conversion and concluding "lineups
+don't matter" answers the wrong question well.
+
+So the foundation was rebuilt at possession grain, which is where those effects can actually
+be measured and what any trade projection has to rest on:
+
+<!-- lineupiq:begin id=results.possessions -->
+| | Value |
+|---|---|
+| Possessions | 774,467 |
+| Attributed to a five-man lineup | 100.00% |
+| Agreement with the independent lineup oracle | 89.95% |
+| ... restricted to possessions not starting on a substitution | **97.60%** |
+| Possessions starting on a substitution (attribution ambiguous) | 14.3% |
+| Points per possession, transition | 1.183 |
+| Points per possession, half-court | 1.071 |
+
+The oracle is a second lineup reconstruction, written independently in
+another language. Away from substitution boundaries the two agree at the
+same rate our period-start solver reports exact solutions. About one
+possession in seven begins on the exact second of a substitution, where
+there are two defensible answers and no way to choose between them; those
+are flagged in the data rather than silently trusted.
+<!-- lineupiq:end id=results.possessions -->
+
 ## What it refuses to answer
 
 This is the part worth reading, and it is deliberately above the architecture section.
@@ -141,31 +171,31 @@ a committed block is stale. Nothing here is typed by hand, and the verdict colum
 allowed to say _loses_.
 
 <!-- lineupiq:begin id=results.model -->
-**Leave-lineup-out Ã¢â‚¬â€ unseen five-man combinations** Ã¢â‚¬â€ n = 406,723 shots
+**Leave-lineup-out -- unseen five-man combinations** -- n = 406,723 shots
 
 | Model | Log loss | Brier | Resolution | ECE | Cal. slope | Verdict |
 |---|---|---|---|---|---|---|
-| B0 Ã‚Â· league zone mean | 0.66035 | 0.23385 | 0.01564 | 0.0096 | 0.991 |  |
-| B1 Ã‚Â· shooter Ãƒâ€” zone (shrunk) | 0.65784 | 0.23269 | 0.01704 | 0.0092 | 0.970 |  |
-| B2 Ã‚Â· B1 + context, no lineup | 0.65696 | 0.23231 | 0.01734 | 0.0107 | 0.941 |  |
-| B3 Ã‚Â· additive GBDT, no lineup | 0.65251 | 0.23035 | 0.01945 | 0.0150 | 0.926 |  |
-| **full Ã‚Â· served closed form** | 0.65683 | 0.23226 | 0.01737 | 0.0105 | 0.939 | +0.019% vs B2 |
-| **full Ã‚Â· unconstrained GBDT** | 0.65200 | 0.23014 | 0.01961 | 0.0141 | 0.932 | +0.078% vs B3 |
+| B0 - league zone mean | 0.66035 | 0.23385 | 0.01564 | 0.0096 | 0.991 |  |
+| B1 - shooter x zone (shrunk) | 0.65784 | 0.23269 | 0.01704 | 0.0092 | 0.970 |  |
+| B2 - B1 + context, no lineup | 0.65696 | 0.23231 | 0.01734 | 0.0107 | 0.941 |  |
+| B3 - additive GBDT, no lineup | 0.65251 | 0.23035 | 0.01945 | 0.0150 | 0.926 |  |
+| **full - served closed form** | 0.65683 | 0.23226 | 0.01737 | 0.0105 | 0.939 | +0.019% vs B2 |
+| **full - unconstrained GBDT** | 0.65200 | 0.23014 | 0.01961 | 0.0141 | 0.932 | +0.078% vs B3 |
 
-**Walk-forward Ã¢â‚¬â€ later games** Ã¢â‚¬â€ n = 404,712 shots
+**Walk-forward -- later games** -- n = 404,712 shots
 
 | Model | Log loss | Brier | Resolution | ECE | Cal. slope | Verdict |
 |---|---|---|---|---|---|---|
-| B0 Ã‚Â· league zone mean | 0.65895 | 0.23316 | 0.01556 | 0.0061 | 1.000 |  |
-| B1 Ã‚Â· shooter Ãƒâ€” zone (shrunk) | 0.65712 | 0.23231 | 0.01678 | 0.0088 | 0.976 |  |
-| B2 Ã‚Â· B1 + context, no lineup | 0.65608 | 0.23186 | 0.01715 | 0.0093 | 0.941 |  |
-| B3 Ã‚Â· additive GBDT, no lineup | 0.65991 | 0.23278 | 0.01792 | 0.0255 | 0.770 |  |
-| **full Ã‚Â· served closed form** | 0.65609 | 0.23187 | 0.01715 | 0.0103 | 0.938 | -0.003% vs B2 |
-| **full Ã‚Â· unconstrained GBDT** | 0.65646 | 0.23186 | 0.01813 | 0.0233 | 0.821 | +0.524% vs B3 |
+| B0 - league zone mean | 0.65895 | 0.23316 | 0.01556 | 0.0061 | 1.000 |  |
+| B1 - shooter x zone (shrunk) | 0.65712 | 0.23231 | 0.01678 | 0.0088 | 0.976 |  |
+| B2 - B1 + context, no lineup | 0.65608 | 0.23186 | 0.01715 | 0.0093 | 0.941 |  |
+| B3 - additive GBDT, no lineup | 0.65991 | 0.23278 | 0.01792 | 0.0255 | 0.770 |  |
+| **full - served closed form** | 0.65609 | 0.23187 | 0.01715 | 0.0103 | 0.938 | -0.003% vs B2 |
+| **full - unconstrained GBDT** | 0.65646 | 0.23186 | 0.01813 | 0.0233 | 0.821 | +0.524% vs B3 |
 
-**Cost of the serving constraint:** the closed form the Worker evaluates is 0.74% worse in log loss than the unconstrained gradient-boosted fit on unseen lineups. That is the price of exact PythonÃ¢â€ â€TypeScript parity inside a 10 ms CPU budget, and it is published rather than absorbed.
+**Cost of the serving constraint:** the closed form the Worker evaluates is 0.74% worse in log loss than the unconstrained gradient-boosted fit on unseen lineups. That is the price of exact Python<->TypeScript parity inside a 10 ms CPU budget, and it is published rather than absorbed.
 
-**Negative control:** with lineup context randomly permuted across shots, the model's log-loss gain over B1 is +0.000796 Ã¢â‚¬â€ indistinguishable from zero, so the lineup features are not leaking. Control passes.
+**Negative control:** with lineup context randomly permuted across shots, the model's log-loss gain over B1 is +0.000796 -- indistinguishable from zero, so the lineup features are not leaking. Control passes.
 
 _Generated from run `dcbcb33` on Windows, seed 20260815, 672,772 shots across 3 seasons._
 <!-- lineupiq:end id=results.model -->

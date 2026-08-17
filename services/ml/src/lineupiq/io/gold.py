@@ -11,7 +11,7 @@ from lineupiq.validate.contracts import derive_contract, write_contract
 __all__ = ["GOLD_TABLES", "available_seasons", "load_all_gold", "load_gold", "refresh_contracts"]
 
 #: Tables that are committed and contract-checked.
-GOLD_TABLES: tuple[str, ...] = ("shot_facts", "stints", "dim_player")
+GOLD_TABLES: tuple[str, ...] = ("shot_facts", "stints", "dim_player", "possession_facts")
 
 
 def available_seasons(paths: DataPaths, table: str = "shot_facts") -> list[Season]:

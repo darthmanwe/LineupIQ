@@ -10,7 +10,7 @@
     "away_lineup",
     "stint_quality"
   ],
-  "content_sha256": "ab4edaf26d451b9234f92c91727f9b79768caddac9284b66c06703efeec250bb",
+  "content_sha256": "a06ed2b948383814a6f1773ca77c9fbc82af45ea4f3144228902e6b8d8aedf1e",
   "dtypes": {
     "away_lineup": "List(Int64)",
     "duration_seconds": "Int64",

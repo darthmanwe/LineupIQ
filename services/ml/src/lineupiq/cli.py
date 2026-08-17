@@ -176,6 +176,16 @@ def build(
             f"  shots={report.n_shots:,}  lineup-coverage={report.shot_lineup_coverage:.2%}"
             f"  3PT-agreement={report.zone_agreement:.3%}"
         )
+        if (pp := report.possessions) is not None:
+            console.print(
+                f"  possessions={pp.n_possessions:,}  lineup-coverage={pp.lineup_coverage:.2%}"
+                f"  oracle-agreement={pp.oracle_agreement:.2%}"
+                f" (unambiguous {pp.oracle_agreement_unambiguous:.2%},"
+                f" {pp.boundary_ambiguous_rate:.1%} at a sub boundary)"
+            )
+            console.print(
+                f"  PPP transition={pp.transition_ppp:.3f} vs half-court={pp.halfcourt_ppp:.3f}"
+            )
         if report.missing_sources:
             console.print(f"  [yellow]absent upstream:[/] {', '.join(report.missing_sources)}")
 

@@ -3,7 +3,7 @@
     "player_id",
     "player_name"
   ],
-  "content_sha256": "02bc0fc113ef94c4edc27274f565a1db0898754c96e875aa8daf8d888800a98a",
+  "content_sha256": "19d2168a65c02343ee1f84895ea0a4bcaf61a1286bcb515d6eac34b219ae5b57",
   "dtypes": {
     "player_id": "Int64",
     "player_name": "String"

@@ -27,7 +27,7 @@
     "lineup_for_hash",
     "lineup_against_hash"
   ],
-  "content_sha256": "358788fde457f36f7e8e549a7203e0900f61fa8e77eee962ce372d08594f8322",
+  "content_sha256": "6fef1199520b36799a3f033d7cacd0fa1a221d7bbe6908ba5fd150a3830a8e3d",
   "dtypes": {
     "action_type": "String",
     "away_lineup": "List(Int64)",

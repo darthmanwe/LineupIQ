@@ -29,6 +29,9 @@ __all__ = ["TableContract", "content_hash", "derive_contract", "verify_table", "
 #: change, coarse enough to survive last-bit variation between BLAS builds.
 _FLOAT_PRECISION = 9
 
+#: Rows per streaming chunk when hashing. Bounds peak memory on large tables.
+_HASH_CHUNK = 50_000
+
 
 def _format(value: Any) -> str:
     if value is None:
@@ -41,20 +44,52 @@ def _format(value: Any) -> str:
 
 
 def content_hash(frame: pl.DataFrame) -> str:
-    """Order-independent SHA-256 over the frame's contents."""
-    columns = sorted(frame.columns)
-    ordered = frame.select(columns)
+    """Order-independent SHA-256 over the frame's contents.
 
-    digests = [
-        hashlib.sha256("\x1f".join(_format(v) for v in row).encode("utf-8")).hexdigest()
-        for row in ordered.iter_rows()
-    ]
-    digests.sort()
+    Canonicalisation happens inside polars rather than by iterating rows in
+    Python. That is not only faster: materialising 1.5M rows of nested list
+    columns as Python objects exhausted memory and crashed the interpreter with
+    an access violation, which is a spectacularly unhelpful way to learn that a
+    checksum is expensive.
+
+    Floats are rounded to a fixed precision before stringification so that
+    last-bit differences between BLAS builds do not read as changed data, and
+    SHA-256 is used rather than polars' internal hash so the digest is stable
+    across polars versions and platforms.
+    """
+    columns = sorted(frame.columns)
+    if not columns:
+        return hashlib.sha256(b"").hexdigest()
+
+    parts: list[pl.Expr] = []
+    for name in columns:
+        dtype = frame.schema[name]
+        col = pl.col(name)
+        if isinstance(dtype, pl.List):
+            # A List cannot be cast straight to Utf8; it has to be rendered
+            # element-wise and joined. Float elements carry the same precision
+            # problem as scalar floats, so they are rounded on the way through.
+            inner = dtype.inner
+            if inner is not None and inner.is_float():
+                col = col.list.eval(pl.element().round(_FLOAT_PRECISION))
+            col = col.cast(pl.List(pl.Utf8)).list.join(",")
+        elif dtype.is_float():
+            col = col.round(_FLOAT_PRECISION).cast(pl.Utf8)
+        else:
+            col = col.cast(pl.Utf8)
+        parts.append(col.fill_null("\x00"))
+
+    canonical = (
+        frame.select(pl.concat_str(parts, separator="\x1f").alias("_row")).get_column("_row").sort()
+    )
 
     outer = hashlib.sha256()
     outer.update("\x1e".join(columns).encode("utf-8"))
-    for digest in digests:
-        outer.update(digest.encode("ascii"))
+    # Stream in chunks so peak memory stays bounded regardless of table size.
+    for offset in range(0, canonical.len(), _HASH_CHUNK):
+        chunk = canonical.slice(offset, _HASH_CHUNK).to_list()
+        outer.update("\x1d".join("" if v is None else v for v in chunk).encode("utf-8"))
+        outer.update(b"\x1c")
     return outer.hexdigest()
 
 

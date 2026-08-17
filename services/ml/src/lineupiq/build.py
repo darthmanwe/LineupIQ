@@ -18,6 +18,7 @@ from lineupiq.paths import DataPaths
 from lineupiq.seasons import Season
 from lineupiq.transform.events import canonical_order, type_events
 from lineupiq.transform.gold import build_dim_player, build_shot_facts
+from lineupiq.transform.possessions import PossessionBuild, build_possession_facts
 from lineupiq.transform.segments import minutes_agreement, segment_stints
 from lineupiq.transform.stints import reconstruct_stints
 from lineupiq.util import as_float, as_int
@@ -63,6 +64,7 @@ class SeasonBuild:
     shot_lineup_coverage: float = 0.0
     #: Agreement between derived and feed-reported three-point classification.
     zone_agreement: float = 0.0
+    possessions: PossessionBuild | None = None
 
     @property
     def exact_rate(self) -> float:
@@ -167,6 +169,16 @@ def build_season(season: Season, paths: DataPaths, *, oracles: bool = True) -> S
 
     _write_gold(paths, "stints", part, stints)
     _write_gold(paths, "dim_player", part, build_dim_player(events))
+
+    # Possession facts: the grain where lineup effects can actually be measured.
+    # Shot conversion turned out to be nearly independent of who else is on the
+    # floor; points per possession is what the product claim actually rests on.
+    if "sdv/possessions" in frames:
+        possessions, poss_report = build_possession_facts(
+            frames["sdv/possessions"], stints, events, season
+        )
+        report.possessions = poss_report
+        _write_gold(paths, "possession_facts", part, possessions)
 
     return report
 

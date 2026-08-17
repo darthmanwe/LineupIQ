@@ -102,8 +102,8 @@ def _estimability(ctx: RenderContext) -> str:
         f"| Share of played time covered by reportable lineups | {covered / total_secs:.1%} |",
         "",
         f"At the {floor}-possession floor a lineup's offensive rating carries a standard error",
-        "of roughly Ã‚Â±8 per 100 possessions, against a true between-lineup spread of about 6Ã¢â‚¬â€œ8.",
-        f"So **{1 - above / total:.1%} of lineups cannot support a point estimate at all** Ã¢â‚¬â€ which",
+        "of roughly +/-8 per 100 possessions, against a true between-lineup spread of about 6-8.",
+        f"So **{1 - above / total:.1%} of lineups cannot support a point estimate at all** -- which",
         "is why the refusal contract is a feature of the API rather than an error path.",
         "",
     ]
@@ -116,23 +116,23 @@ def _model_results(ctx: RenderContext) -> str:
 
     out: list[str] = [""]
     labels = {
-        "B0": "B0 Ã‚Â· league zone mean",
-        "B1": "B1 Ã‚Â· shooter Ãƒâ€” zone (shrunk)",
-        "B2": "B2 Ã‚Â· B1 + context, no lineup",
-        "B3": "B3 Ã‚Â· additive GBDT, no lineup",
-        "full": "**full Ã‚Â· served closed form**",
-        "full_gbdt": "**full Ã‚Â· unconstrained GBDT**",
+        "B0": "B0 - league zone mean",
+        "B1": "B1 - shooter x zone (shrunk)",
+        "B2": "B2 - B1 + context, no lineup",
+        "B3": "B3 - additive GBDT, no lineup",
+        "full": "**full - served closed form**",
+        "full_gbdt": "**full - unconstrained GBDT**",
     }
     counterpart = {"full": "B2", "full_gbdt": "B3"}
 
     for split, models in ctx.run.get("metrics", {}).items():
         title = {
-            "walk_forward": "Walk-forward Ã¢â‚¬â€ later games",
-            "leave_lineup_out": "Leave-lineup-out Ã¢â‚¬â€ unseen five-man combinations",
+            "walk_forward": "Walk-forward -- later games",
+            "leave_lineup_out": "Leave-lineup-out -- unseen five-man combinations",
         }.get(split, split)
         n = int(models.get("full", {}).get("n", 0))
         out += [
-            f"**{title}** Ã¢â‚¬â€ n = {n:,} shots",
+            f"**{title}** -- n = {n:,} shots",
             "",
             "| Model | Log loss | Brier | Resolution | ECE | Cal. slope | Verdict |",
             "|---|---|---|---|---|---|---|",
@@ -161,7 +161,7 @@ def _model_results(ctx: RenderContext) -> str:
         out += [
             f"**Cost of the serving constraint:** the closed form the Worker evaluates is "
             f"{cost:.2%} worse in log loss than the unconstrained gradient-boosted fit on "
-            "unseen lineups. That is the price of exact PythonÃ¢â€ â€TypeScript parity inside a "
+            "unseen lineups. That is the price of exact Python<->TypeScript parity inside a "
             "10 ms CPU budget, and it is published rather than absorbed.",
             "",
         ]
@@ -171,7 +171,7 @@ def _model_results(ctx: RenderContext) -> str:
         verdict = "passes" if abs(control) < 1e-3 else "**FAILS**"
         out += [
             f"**Negative control:** with lineup context randomly permuted across shots, the "
-            f"model's log-loss gain over B1 is {control:+.6f} Ã¢â‚¬â€ indistinguishable from zero, so "
+            f"model's log-loss gain over B1 is {control:+.6f} -- indistinguishable from zero, so "
             f"the lineup features are not leaking. Control {verdict}.",
             "",
         ]
@@ -183,6 +183,52 @@ def _model_results(ctx: RenderContext) -> str:
     )
     out += [meta, ""]
     return "\n".join(out)
+
+
+def _possessions(ctx: RenderContext) -> str:
+    """The possession layer, and the oracle check on it."""
+    try:
+        poss = load_all_gold(ctx.paths, "possession_facts")
+    except FileNotFoundError:
+        return "\n_Not yet built._\n"
+
+    n = poss.height
+    matched = poss.with_columns(
+        pl.col("oracle_off_lineup").list.sort().eq(pl.col("off_lineup").list.sort()).alias("m")
+    )
+    overall = as_float(matched["m"].mean())
+    clean = matched.filter(~pl.col("boundary_ambiguous"))
+    unambiguous = as_float(clean["m"].mean()) if clean.height else 0.0
+    boundary_rate = as_float(poss["boundary_ambiguous"].mean())
+
+    live = poss.filter(pl.col("live_ball_start") & (pl.col("possession_seconds") <= 7))
+    half = poss.filter(~pl.col("live_ball_start") | (pl.col("possession_seconds") > 7))
+
+    return "\n".join(
+        [
+            "",
+            "| | Value |",
+            "|---|---|",
+            f"| Possessions | {n:,} |",
+            f"| Attributed to a five-man lineup | "
+            f"{poss.filter(pl.col('off_lineup_hash').is_not_null()).height / n:.2%} |",
+            f"| Agreement with the independent lineup oracle | {overall:.2%} |",
+            f"| ... restricted to possessions not starting on a substitution | "
+            f"**{unambiguous:.2%}** |",
+            f"| Possessions starting on a substitution (attribution ambiguous) | "
+            f"{boundary_rate:.1%} |",
+            f"| Points per possession, transition | {as_float(live['points'].mean()):.3f} |",
+            f"| Points per possession, half-court | {as_float(half['points'].mean()):.3f} |",
+            "",
+            "The oracle is a second lineup reconstruction, written independently in",
+            "another language. Away from substitution boundaries the two agree at the",
+            "same rate our period-start solver reports exact solutions. About one",
+            "possession in seven begins on the exact second of a substitution, where",
+            "there are two defensible answers and no way to choose between them; those",
+            "are flagged in the data rather than silently trusted.",
+            "",
+        ]
+    )
 
 
 def _data_quality(ctx: RenderContext) -> str:
@@ -211,6 +257,7 @@ RENDERERS = {
     "results.estimability": _estimability,
     "results.model": _model_results,
     "results.dataquality": _data_quality,
+    "results.possessions": _possessions,
 }
 
 

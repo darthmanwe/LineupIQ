@@ -1,4 +1,4 @@
-﻿# Portable Rearchitecture
+# Portable Rearchitecture
 
 **Status**: active design
 **Supersedes**: [`00-original-snowflake-design.md`](00-original-snowflake-design.md)
@@ -22,7 +22,7 @@ It fails three requirements this project actually has:
    nobody can clone the repository and get the numbers back.
 
 The rearchitecture keeps the data model and replaces the runtime. The medallion schema
-names and grains are preserved exactly, so the Snowflake path stays real â€” it is just no
+names and grains are preserved exactly, so the Snowflake path stays real — it is just no
 longer load-bearing.
 
 ---
@@ -125,14 +125,14 @@ The base data is a static historical load; there is nothing to schedule.
 ## The serving constraint, and what it costs
 
 Cloudflare Workers give 10 ms CPU per request. The Lineup Optimizer accepts any 5 of
-~450 players â€” C(450,5) â‰ˆ 1.5Ã—10Â¹Â¹ combinations, so nothing can be precomputed.
+~450 players — C(450,5) ≈ 1.5×10¹¹ combinations, so nothing can be precomputed.
 
 The model is therefore **split at the lineup boundary**. Everything depending only on
-shooter Ã— zone Ã— season is a gradient-boosted prediction baked into a precomputed
+shooter × zone × season is a gradient-boosted prediction baked into a precomputed
 `a[i,z]` term offline; only the lineup-interaction terms evaluate at request time, as a
 closed form over precomputed per-player vectors (~500 float ops).
 
-Hoops_Lab's rule â€” _"the Worker does no arithmetic"_ â€” cannot transfer here. It is
+Hoops_Lab's rule — _"the Worker does no arithmetic"_ — cannot transfer here. It is
 replaced by something stronger: `serve/parity.py` scores 2,000 random lineups in Python,
 and a vitest suite inside `workerd` re-scores each in TypeScript and asserts agreement to
 1e-9. CI gates every push on it. Train/serve skew is eliminated by proof rather than by
@@ -150,18 +150,18 @@ measuring what it cost would not be.
 These are errors in `00-original-snowflake-design.md`, listed so the delta is auditable.
 
 **1. The EPSA formula is arithmetically wrong.** Section 3 gives
-`EPSA = P(make)Â·points + P(foul_on_shot)Â·E[FT_points]`. This double-counts and-1s (the
+`EPSA = P(make)·points + P(foul_on_shot)·E[FT_points]`. This double-counts and-1s (the
 field goal _and_ the free throw both score) and omits the missed-shot-plus-foul branch,
 which is not a field-goal attempt at all. The corrected decomposition over four mutually
 exclusive outcomes:
 
 ```
-EPSA = (1 âˆ’ p_foul)Â·p_make_nfÂ·pts
-     + p_foulÂ·[ p_and1Â·(pts + ft_pct) + (1 âˆ’ p_and1)Â·ft_pctÂ·n_ft ]
+EPSA = (1 − p_foul)·p_make_nf·pts
+     + p_foul·[ p_and1·(pts + ft_pct) + (1 − p_and1)·ft_pct·n_ft ]
 ```
 
-The _framing_ â€” that free throws drawn on shot attempts are a large share of scoring
-value and `FG% Ã— points` misses them â€” is correct and is why this metric is worth
+The _framing_ — that free throws drawn on shot attempts are a large share of scoring
+value and `FG% × points` misses them — is correct and is why this metric is worth
 building.
 
 **2. The model specification contradicts itself.** Line 198 specifies LightGBM; line 208
@@ -174,7 +174,7 @@ L-BFGS, and a GBDT consuming the synergy scalars as ordinary numeric columns.
 **3. There was no validation plan for the headline claim.** The design correctly notes
 that trade forecasting requires predicting lineups that have never existed, then proposes
 an evaluation harness covering shot calibration, RAPM correlation, retrieval precision,
-and prompt regression â€” none of which test that. Replaced by leave-lineup-out,
+and prompt regression — none of which test that. Replaced by leave-lineup-out,
 leave-pair-out, and a three-tier historical trade backtest with a pre-registered power
 analysis.
 
@@ -187,21 +187,21 @@ statistical content, so its embedding encodes noise. Documents are built at
 **5. The transition flag is not computable as specified.** The rule is "shot clock < 10s
 and possession didn't start after a stoppage," but the shot clock is not in the feed.
 Replaced with possession-start-type plus seconds-into-possession, validated against an
-independent possessions source. The design also asserts 1.12 vs 0.95 PPP â€” that gets
+independent possessions source. The design also asserts 1.12 vs 0.95 PPP — that gets
 computed, not quoted.
 
-**6. `era_bucket` weighting is inert at this scope.** Over 2022â€“25 the column is constant.
+**6. `era_bucket` weighting is inert at this scope.** Over 2022–25 the column is constant.
 It is kept for schema parity and future backfill, but no era-weighting mechanism is
 built. Shipping a weighting scheme driven by a constant column would be the same category
 of overclaim as fabricating data.
 
 **7. `PLAY_TYPE_FACTS` has no join key.** It is specified as keyed on `player_id`, but the
 Synergy source provides `PLAYER`/`TEAM` name strings. Resolved by sourcing play types from
-`nba_api.synergyplaytypes`, which returns `PLAYER_ID` natively â€” eliminating the join
+`nba_api.synergyplaytypes`, which returns `PLAYER_ID` natively — eliminating the join
 rather than fuzzy-matching it.
 
-**8. The stated coverage is inconsistent.** The design claims 1996â€“2024; the Kaggle slug it
-names says 1996â€“2021. Neither is this project's scope. Coverage is declared once in
+**8. The stated coverage is inconsistent.** The design claims 1996–2024; the Kaggle slug it
+names says 1996–2021. Neither is this project's scope. Coverage is declared once in
 `seasons.py` and asserted at build time against the `GAME_ID` prefix.
 
 ---
@@ -216,7 +216,7 @@ The parts of the original design that were right, and survive unchanged:
   with one correction: the sort must be numeric, not lexicographic, or the hash differs
   across engines.
 - **Tiered stint reconstruction with explicit quality flags.** `VALID` / `IMPUTED` /
-  `QUARANTINED` â€” a stint that cannot be determined produces a null lineup and a flag,
+  `QUARANTINED` — a stint that cannot be determined produces a null lineup and a flag,
   never a guess.
 - **The data-quality gates and their thresholds**, including the <2% stint-versus-box-score
   minutes check, which is the genuinely independent validation in the whole pipeline.

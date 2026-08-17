@@ -1,0 +1,162 @@
+{
+  "columns": [
+    "game_id",
+    "period",
+    "possession_number",
+    "offense_team_id",
+    "defense_team_id",
+    "start_seconds_remaining",
+    "end_seconds_remaining",
+    "points",
+    "possession_start_type",
+    "fg2a",
+    "fg3a",
+    "fta",
+    "tov",
+    "oreb",
+    "stint_index",
+    "home_lineup",
+    "away_lineup",
+    "stint_quality",
+    "home_team_id",
+    "oracle_off_lineup",
+    "off_lineup",
+    "def_lineup",
+    "off_lineup_hash",
+    "def_lineup_hash",
+    "live_ball_start",
+    "boundary_ambiguous",
+    "season",
+    "possession_seconds"
+  ],
+  "content_sha256": "2ce63545180c0153d85619774155c03ff3057109c1cc8040dec8d3a3499716c1",
+  "dtypes": {
+    "away_lineup": "List(Int64)",
+    "boundary_ambiguous": "Boolean",
+    "def_lineup": "List(Int64)",
+    "def_lineup_hash": "String",
+    "defense_team_id": "Int64",
+    "end_seconds_remaining": "Float64",
+    "fg2a": "Int64",
+    "fg3a": "Int64",
+    "fta": "Int64",
+    "game_id": "String",
+    "home_lineup": "List(Int64)",
+    "home_team_id": "Int64",
+    "live_ball_start": "Boolean",
+    "off_lineup": "List(Int64)",
+    "off_lineup_hash": "String",
+    "offense_team_id": "Int64",
+    "oracle_off_lineup": "List(Int64)",
+    "oreb": "Int64",
+    "period": "Int64",
+    "points": "Int64",
+    "possession_number": "Int64",
+    "possession_seconds": "Float64",
+    "possession_start_type": "String",
+    "season": "Int64",
+    "start_seconds_remaining": "Float64",
+    "stint_index": "Int64",
+    "stint_quality": "String",
+    "tov": "Int64"
+  },
+  "null_rates": {
+    "away_lineup": 0.0,
+    "boundary_ambiguous": 0.0,
+    "def_lineup": 0.0,
+    "def_lineup_hash": 0.0,
+    "defense_team_id": 0.0,
+    "end_seconds_remaining": 0.0,
+    "fg2a": 0.0,
+    "fg3a": 0.0,
+    "fta": 0.0,
+    "game_id": 0.0,
+    "home_lineup": 0.0,
+    "home_team_id": 0.0,
+    "live_ball_start": 0.0,
+    "off_lineup": 0.0,
+    "off_lineup_hash": 0.0,
+    "offense_team_id": 0.0,
+    "oracle_off_lineup": 0.0,
+    "oreb": 0.0,
+    "period": 0.0,
+    "points": 0.0,
+    "possession_number": 0.0,
+    "possession_seconds": 0.0,
+    "possession_start_type": 0.0,
+    "season": 0.0,
+    "start_seconds_remaining": 0.0,
+    "stint_index": 0.0,
+    "stint_quality": 0.0,
+    "tov": 0.0
+  },
+  "numeric_ranges": {
+    "defense_team_id": [
+      1610612737.0,
+      1610612766.0
+    ],
+    "end_seconds_remaining": [
+      0.0,
+      720.0
+    ],
+    "fg2a": [
+      0.0,
+      6.0
+    ],
+    "fg3a": [
+      0.0,
+      5.0
+    ],
+    "fta": [
+      0.0,
+      6.0
+    ],
+    "home_team_id": [
+      1610612737.0,
+      1610612766.0
+    ],
+    "offense_team_id": [
+      1610612737.0,
+      1610612766.0
+    ],
+    "oreb": [
+      0.0,
+      6.0
+    ],
+    "period": [
+      1.0,
+      6.0
+    ],
+    "points": [
+      0.0,
+      7.0
+    ],
+    "possession_number": [
+      1.0,
+      251.0
+    ],
+    "possession_seconds": [
+      0.0,
+      79.0
+    ],
+    "season": [
+      2023.0,
+      2023.0
+    ],
+    "start_seconds_remaining": [
+      0.1,
+      720.0
+    ],
+    "stint_index": [
+      0.0,
+      16.0
+    ],
+    "tov": [
+      0.0,
+      1.0
+    ]
+  },
+  "partition": "season=2023",
+  "rows": 256605,
+  "table": "possession_facts"
+}
