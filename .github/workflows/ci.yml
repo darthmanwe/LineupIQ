@@ -109,22 +109,108 @@ jobs:
       # Bare pytest is offline and free by marker gating. If this job ever needs
       # a network or a key to pass, the "clone and verify" claim has broken.
       - run: uv run pytest -q
+
+  # Re-derives every committed gold checksum and runs all twelve data-quality
+  # gates, offline. This is the job that makes "clone and reproduce" a claim
+  # rather than a hope: no network, no key, no Cloudflare account, no Snowflake.
+  #
+  # Four of the gates exist because of bugs that were silent when found --
+  # possessions measuring zero seconds long, attribution drifting off the change
+  # of hands, and shots dropped by a one-second clock mismatch between two
+  # feeds. See docs/modeling.md.
+  data-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run lineupiq verify
+
+  # A stale README fails the build exactly as a stale data contract does.
+  # Every published number is rendered from a run log; `report check`
+  # re-renders into memory and diffs against what is committed.
+  readme-is-current:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run lineupiq report check
+
+  # The load-bearing half of the Snowflake story. `sqlfluff` asserts every .sql
+  # file parses as genuine Snowflake on every push -- no account, no cost, no
+  # credentials. It has already earned its place: it caught a CREATE RESOURCE
+  # MONITOR statement that reads correctly and does not parse.
+  #
+  # `snowflake check` then asserts the committed DDL still matches the committed
+  # data contracts, which catches the failure that actually happens: a gold
+  # table gaining a column while the SQL does not.
+  snowflake-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+        working-directory: services/ml
+      - run: uv run sqlfluff lint --dialect snowflake ../../sql/snowflake/
+        working-directory: services/ml
+      - run: uv run lineupiq snowflake check
+        working-directory: services/ml
+
+  # Python and TypeScript must reach the same lineup hash and the same support
+  # tier on every case in the committed fixture. Neither disagreement raises
+  # anything at runtime: a hash mismatch returns zero rows everywhere and looks
+  # like missing data, and a tier mismatch serves a confident number where
+  # Python would have refused.
+  #
+  # The Python leg regenerates the fixture and asserts it has not moved, so the
+  # fixture cannot silently drift to match whichever side changed.
+  serve-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: uv sync --extra dev
+        working-directory: services/ml
+      - run: uv run lineupiq parity
+        working-directory: services/ml
+      - name: Assert the fixture and the export are unchanged
+        run: |
+          git diff --exit-code -- data/parity/lineups.json apps/web/public/data/ \
+            || (echo "::error::Regenerating the parity fixture changed it. Commit the new one." && exit 1)
+      - run: npm ci
+      - run: npm --workspace apps/api run test
 # ---------------------------------------------------------------------------
 # Jobs that land with the milestone that makes them meaningful. They are listed
 # here rather than added as always-green stubs, because a job that passes
 # without checking anything is worse than an absent one.
 #
-#   M2  data-contract          re-derive every committed gold checksum, offline
-#   M2  stint-oracle           re-run minutes + oracle agreement, assert the
-#                              published rates
-#   M3  repro                  `train --verify`; fail if any metric moved >1e-6
-#   M3  serve-parity           Python vs TypeScript scorer agree to 1e-9
+#   M3  repro                  `train --verify` and `selection --verify`; fail
+#                              if any metric moved >1e-6. Not yet wired: both
+#                              take tens of minutes on a full refit, so this
+#                              needs to be a scheduled job rather than a
+#                              per-push one.
 #   M4  no-unsupported-numbers walk low-support fixtures through every scoring
 #                              route; assert 422 or a null point estimate, and
 #                              that the pre-registered threshold hash is intact
 #   M6  groundedness           re-score committed narratives against evidence
 #                              rebuilt from gold, with no key and no network
-#   M7  snowflake-sql-lint     sqlfluff over sql/snowflake, dialect=snowflake
-#   M7  schema-parity          DDL columns must match the parquet contract
-#   M8  readme-is-current      `report check`; a stale README fails the build
 # ---------------------------------------------------------------------------

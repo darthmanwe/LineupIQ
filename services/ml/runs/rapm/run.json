@@ -1,0 +1,845 @@
+{
+  "boundary_sensitivity": {
+    "def_correlation": 0.9755979585883191,
+    "def_mean_abs_change": 0.1807631148228518,
+    "n_possessions_excluded": 67142,
+    "off_correlation": 0.9749667458780501,
+    "off_mean_abs_change": 0.2698757758796051,
+    "share_excluded": 0.08983986127019128
+  },
+  "co_occurrence": {
+    "ceiling": 0.85,
+    "median_max_co_occurrence": 0.5192415785387317,
+    "n_flagged": 51,
+    "n_players": 770,
+    "non_identified": [
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631172,
+        "player_id": 1642502,
+        "possessions": 80
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629003,
+        "player_id": 1642385,
+        "possessions": 46
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629610,
+        "player_id": 1630622,
+        "possessions": 8
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 203490,
+        "player_id": 1630606,
+        "possessions": 1
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631207,
+        "player_id": 1630250,
+        "possessions": 80
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629642,
+        "player_id": 202738,
+        "possessions": 90
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1642353,
+        "player_id": 1642280,
+        "possessions": 111
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630225,
+        "player_id": 1630648,
+        "possessions": 22
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631207,
+        "player_id": 1630792,
+        "possessions": 36
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1627788,
+        "player_id": 1630701,
+        "possessions": 3
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630346,
+        "player_id": 1629232,
+        "possessions": 31
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631165,
+        "player_id": 1629126,
+        "possessions": 28
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630540,
+        "player_id": 1631211,
+        "possessions": 32
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630202,
+        "player_id": 1629662,
+        "possessions": 136
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631169,
+        "player_id": 1631159,
+        "possessions": 399
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 201144,
+        "player_id": 1629735,
+        "possessions": 15
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 203469,
+        "player_id": 1631167,
+        "possessions": 15
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630528,
+        "player_id": 1641815,
+        "possessions": 22
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629013,
+        "player_id": 1626143,
+        "possessions": 14
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1627814,
+        "player_id": 1641779,
+        "possessions": 112
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 201152,
+        "player_id": 1641806,
+        "possessions": 13
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1628988,
+        "player_id": 1642434,
+        "possessions": 29
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630322,
+        "player_id": 1642449,
+        "possessions": 86
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629723,
+        "player_id": 1642389,
+        "possessions": 6
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630568,
+        "player_id": 1642399,
+        "possessions": 19
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1642403,
+        "player_id": 1627746,
+        "possessions": 46
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1628995,
+        "player_id": 1641879,
+        "possessions": 28
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629033,
+        "player_id": 1628416,
+        "possessions": 29
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1627745,
+        "player_id": 1628402,
+        "possessions": 18
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630541,
+        "player_id": 1628435,
+        "possessions": 84
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1628981,
+        "player_id": 1631495,
+        "possessions": 17
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1627853,
+        "player_id": 1631376,
+        "possessions": 7
+      },
+      {
+        "max_co_occurrence": 0.9619047619047619,
+        "partner_id": 1630528,
+        "player_id": 1631309,
+        "possessions": 105
+      },
+      {
+        "max_co_occurrence": 0.9517543859649122,
+        "partner_id": 1641816,
+        "player_id": 1641790,
+        "possessions": 228
+      },
+      {
+        "max_co_occurrence": 0.9487179487179487,
+        "partner_id": 1630699,
+        "player_id": 1641857,
+        "possessions": 234
+      },
+      {
+        "max_co_occurrence": 0.9420289855072463,
+        "partner_id": 1630540,
+        "player_id": 1629718,
+        "possessions": 138
+      },
+      {
+        "max_co_occurrence": 0.9411764705882353,
+        "partner_id": 1630556,
+        "player_id": 1641771,
+        "possessions": 119
+      },
+      {
+        "max_co_occurrence": 0.9358974358974359,
+        "partner_id": 1630311,
+        "player_id": 1642050,
+        "possessions": 156
+      },
+      {
+        "max_co_occurrence": 0.9300699300699301,
+        "partner_id": 1641765,
+        "player_id": 1641926,
+        "possessions": 143
+      },
+      {
+        "max_co_occurrence": 0.9263157894736842,
+        "partner_id": 1642278,
+        "player_id": 1641817,
+        "possessions": 95
+      },
+      {
+        "max_co_occurrence": 0.9117647058823529,
+        "partner_id": 1630202,
+        "player_id": 1628382,
+        "possessions": 374
+      },
+      {
+        "max_co_occurrence": 0.9,
+        "partner_id": 1630556,
+        "player_id": 1630259,
+        "possessions": 80
+      },
+      {
+        "max_co_occurrence": 0.8861788617886179,
+        "partner_id": 1630561,
+        "player_id": 1629663,
+        "possessions": 123
+      },
+      {
+        "max_co_occurrence": 0.8830188679245283,
+        "partner_id": 1642281,
+        "player_id": 1641772,
+        "possessions": 265
+      },
+      {
+        "max_co_occurrence": 0.8819188191881919,
+        "partner_id": 1642277,
+        "player_id": 1642484,
+        "possessions": 271
+      },
+      {
+        "max_co_occurrence": 0.865979381443299,
+        "partner_id": 1629670,
+        "player_id": 1631338,
+        "possessions": 485
+      },
+      {
+        "max_co_occurrence": 0.8652173913043478,
+        "partner_id": 1641712,
+        "player_id": 1631386,
+        "possessions": 230
+      },
+      {
+        "max_co_occurrence": 0.8641509433962264,
+        "partner_id": 1631098,
+        "player_id": 1630225,
+        "possessions": 265
+      },
+      {
+        "max_co_occurrence": 0.8627450980392157,
+        "partner_id": 1630929,
+        "player_id": 1641847,
+        "possessions": 51
+      },
+      {
+        "max_co_occurrence": 0.8582677165354331,
+        "partner_id": 1641766,
+        "player_id": 1630929,
+        "possessions": 127
+      }
+    ]
+  },
+  "condition_number": 215.44707521500558,
+  "cv_mse": 1.4174583255759172,
+  "effective_df": 643.4936017501245,
+  "home_advantage": 1.942658911735307,
+  "lambda_defence": 4000.0,
+  "lambda_offence": 2000.0,
+  "lambda_trace": [
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 50.0,
+      "mse": 1.41895638363216
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4188139428573932
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4186010279125558
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 50.0,
+      "mse": 1.418428105884904
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4182647698130235
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.418148010170231
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4181197603391675
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.418198322092456
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4183638309784385
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 50.0,
+      "mse": 1.4185743610973338
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4188322916265983
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 100.0,
+      "mse": 1.418691396162095
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 100.0,
+      "mse": 1.418480450430782
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4183088866541973
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4181466749441245
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4180306953888222
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.418002841458584
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4180814375144797
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.418246707769219
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 100.0,
+      "mse": 1.4184568669142692
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4186425865257346
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4185038685223408
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4182964604824402
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4181278812518479
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4179682515047882
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4178539674351205
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4178267871347967
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4179051114813959
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4180694295765248
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 250.0,
+      "mse": 1.4182783604282352
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4184825823199483
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4183452757378554
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 500.0,
+      "mse": 1.418140702159176
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4179753315554553
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.417819171809319
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4177076055787003
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4176817947585414
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4177600915472708
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4179233624339354
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 500.0,
+      "mse": 1.4181308291734893
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4183291522737518
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4181927512485288
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.417990138116143
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4178276864919976
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.417675754168206
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4175686037154729
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4175459140161386
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4176252792112327
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4177878541230673
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 1000.0,
+      "mse": 1.4179937654897734
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4182272311802377
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4180911307151212
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.417889066855539
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4177279546259227
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4175790056695468
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4174764100333435
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4174583255759172
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.417540514536882
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.417703601527376
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 2000.0,
+      "mse": 1.4179085484047693
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4182347927232994
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4180984863700534
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4178957178269742
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4177340612282556
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4175853304591353
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.417484600192356
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4174698690543173
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4175552829808742
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.417720013487217
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 4000.0,
+      "mse": 1.4179250480960024
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4183860409553286
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4182492863182106
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4180451986982245
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4178818550582362
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4177310433347665
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4176285422862533
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4176130818598638
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4176987120996778
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4178638009144593
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 8000.0,
+      "mse": 1.4180688533725052
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.418662239815338
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4185250680570112
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4183197330350399
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4181546088696992
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4180011166604618
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.417895104808946
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4178755808600767
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4179570180914567
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4181183148124952
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 16000.0,
+      "mse": 1.4183204755323966
+    },
+    {
+      "lambda_defence": 50.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4190054038559565
+    },
+    {
+      "lambda_defence": 100.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4188679622944653
+    },
+    {
+      "lambda_defence": 250.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4186617742869028
+    },
+    {
+      "lambda_defence": 500.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4184953752025269
+    },
+    {
+      "lambda_defence": 1000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.418339852878898
+    },
+    {
+      "lambda_defence": 2000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4182308126055494
+    },
+    {
+      "lambda_defence": 4000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4182068819725824
+    },
+    {
+      "lambda_defence": 8000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4182822897407095
+    },
+    {
+      "lambda_defence": 16000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.4184364448848563
+    },
+    {
+      "lambda_defence": 32000.0,
+      "lambda_offence": 32000.0,
+      "mse": 1.418631772367297
+    }
+  ],
+  "league_ppp": 1.1531647737612263,
+  "n_players": 770,
+  "n_possessions": 747352,
+  "reliability": {
+    "def_full_sample_reliability": 0.5938963128923793,
+    "def_spearman_rho": 0.3593599939547262,
+    "def_split_half_r": 0.4223702123376364,
+    "min_possessions": 200,
+    "n_players": 636,
+    "off_full_sample_reliability": 0.5654953427514925,
+    "off_spearman_rho": 0.32693502986603135,
+    "off_split_half_r": 0.3942094854095189
+  },
+  "spread": {
+    "def_p95_minus_p05": 3.7636722602480672,
+    "def_sd": 1.0934413778247685,
+    "off_p95_minus_p05": 5.132712425353775,
+    "off_sd": 1.5766978709119903
+  }
+}

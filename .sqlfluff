@@ -1,0 +1,22 @@
+# sqlfluff configuration for the Snowflake adapter.
+#
+# The load-bearing assertion is that every .sql file here PARSES as genuine
+# Snowflake SQL. That runs on every push, needs no account, and costs nothing --
+# which makes it the only part of the Snowflake story that is verified rather
+# than merely written.
+[sqlfluff]
+dialect = snowflake
+templater = raw
+max_line_length = 100
+
+# The DDL is generated from the committed data contracts by
+# `lineupiq snowflake ddl`, so capitalisation is decided by the generator and
+# there is nothing for a human to get inconsistent about.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = upper

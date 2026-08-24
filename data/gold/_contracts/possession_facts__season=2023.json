@@ -3,12 +3,16 @@
     "game_id",
     "period",
     "possession_number",
+    "number_in_period",
     "offense_team_id",
     "defense_team_id",
-    "start_seconds_remaining",
+    "possession_start_clock",
+    "first_event_seconds_remaining",
     "end_seconds_remaining",
+    "possession_seconds",
     "points",
     "possession_start_type",
+    "is_second_chance",
     "fg2a",
     "fg3a",
     "fta",
@@ -27,9 +31,9 @@
     "live_ball_start",
     "boundary_ambiguous",
     "season",
-    "possession_seconds"
+    "transition"
   ],
-  "content_sha256": "2ce63545180c0153d85619774155c03ff3057109c1cc8040dec8d3a3499716c1",
+  "content_sha256": "2cbb71f2d2cc5eb1e5deb99b07e9f28027f4a625cf0f084889bab06c437252ad",
   "dtypes": {
     "away_lineup": "List(Int64)",
     "boundary_ambiguous": "Boolean",
@@ -39,11 +43,14 @@
     "end_seconds_remaining": "Float64",
     "fg2a": "Int64",
     "fg3a": "Int64",
+    "first_event_seconds_remaining": "Float64",
     "fta": "Int64",
     "game_id": "String",
     "home_lineup": "List(Int64)",
     "home_team_id": "Int64",
+    "is_second_chance": "Boolean",
     "live_ball_start": "Boolean",
+    "number_in_period": "Int64",
     "off_lineup": "List(Int64)",
     "off_lineup_hash": "String",
     "offense_team_id": "Int64",
@@ -53,12 +60,13 @@
     "points": "Int64",
     "possession_number": "Int64",
     "possession_seconds": "Float64",
+    "possession_start_clock": "Float64",
     "possession_start_type": "String",
     "season": "Int64",
-    "start_seconds_remaining": "Float64",
     "stint_index": "Int64",
     "stint_quality": "String",
-    "tov": "Int64"
+    "tov": "Int64",
+    "transition": "Boolean"
   },
   "null_rates": {
     "away_lineup": 0.0,
@@ -69,11 +77,14 @@
     "end_seconds_remaining": 0.0,
     "fg2a": 0.0,
     "fg3a": 0.0,
+    "first_event_seconds_remaining": 0.0,
     "fta": 0.0,
     "game_id": 0.0,
     "home_lineup": 0.0,
     "home_team_id": 0.0,
+    "is_second_chance": 0.0,
     "live_ball_start": 0.0,
+    "number_in_period": 0.0,
     "off_lineup": 0.0,
     "off_lineup_hash": 0.0,
     "offense_team_id": 0.0,
@@ -83,12 +94,13 @@
     "points": 0.0,
     "possession_number": 0.0,
     "possession_seconds": 0.0,
+    "possession_start_clock": 0.0,
     "possession_start_type": 0.0,
     "season": 0.0,
-    "start_seconds_remaining": 0.0,
     "stint_index": 0.0,
     "stint_quality": 0.0,
-    "tov": 0.0
+    "tov": 0.0,
+    "transition": 0.0
   },
   "numeric_ranges": {
     "defense_team_id": [
@@ -107,6 +119,10 @@
       0.0,
       5.0
     ],
+    "first_event_seconds_remaining": [
+      0.0,
+      720.0
+    ],
     "fta": [
       0.0,
       6.0
@@ -114,6 +130,10 @@
     "home_team_id": [
       1610612737.0,
       1610612766.0
+    ],
+    "number_in_period": [
+      1.0,
+      61.0
     ],
     "offense_team_id": [
       1610612737.0,
@@ -137,15 +157,15 @@
     ],
     "possession_seconds": [
       0.0,
-      79.0
+      102.0
+    ],
+    "possession_start_clock": [
+      0.1,
+      720.0
     ],
     "season": [
       2023.0,
       2023.0
-    ],
-    "start_seconds_remaining": [
-      0.1,
-      720.0
     ],
     "stint_index": [
       0.0,
@@ -157,6 +177,6 @@
     ]
   },
   "partition": "season=2023",
-  "rows": 256605,
+  "rows": 257168,
   "table": "possession_facts"
 }

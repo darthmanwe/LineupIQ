@@ -8,8 +8,8 @@ effects live in shot **selection** and in what a possession is worth, not in
 conversion once a shot is taken.
 
 This module builds the layer where those effects can actually be measured: one
-row per possession, with points scored, how the possession started, and the ten
-players on the floor.
+row per possession, with points scored, how the possession started, how long it
+lasted, and the ten players on the floor.
 
 The lineups attached here are **ours**, reconstructed from play-by-play. The
 upstream file ships its own lineup columns, and using those would delete the
@@ -21,7 +21,7 @@ same possession is a finding worth having.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import polars as pl
 
@@ -29,13 +29,40 @@ from lineupiq.hashing import LINEUP_SIZE
 from lineupiq.seasons import MODELLED_GAME_TYPES, Season, game_type_from_game_id
 from lineupiq.util import as_float
 
-__all__ = ["PossessionBuild", "build_possession_facts", "home_team_by_game"]
+__all__ = [
+    "LIVE_BALL_STARTS",
+    "OVERTIME_PERIOD_SECONDS",
+    "REGULATION_PERIOD_SECONDS",
+    "TRANSITION_SECONDS",
+    "PossessionBuild",
+    "build_possession_facts",
+    "home_team_by_game",
+    "possession_windows",
+]
 
-#: Possessions that began from a live-ball change of hands. Everything else
-#: (deadball, timeout) starts against a set defence, which is a different game.
-_LIVE_BALL_STARTS = ("OffMadeShot", "OffMissedShot", "OffLiveBallTurnover")
+#: Period lengths, used to open the clock on a period's first possession.
+REGULATION_PERIOD_SECONDS = 720.0
+OVERTIME_PERIOD_SECONDS = 300.0
 
-#: Seconds from possession start within which a shot counts as transition.
+#: Possession starts where the ball was already live: a defensive rebound or a
+#: steal. Everything else is inbounded against a defence that had time to set.
+#:
+#: ``OffMadeShot`` was originally in this tuple and the data rejected it. Median
+#: possession length by start type:
+#:
+#:     OffLiveBallTurnover   7s     <- live
+#:     OffMissedShot        10s     <- live
+#:     OffDeadball          16s
+#:     OffMadeShot          17s
+#:     OffTimeout           18s
+#:
+#: A possession beginning after the opponent scores is inbounded from the
+#: baseline with the clock stopped, and it behaves exactly like a timeout. The
+#: split above is not a judgement call; it is where the durations separate.
+LIVE_BALL_STARTS: tuple[str, ...] = ("OffMissedShot", "OffLiveBallTurnover")
+
+#: Seconds from the change of hands within which a possession counts as
+#: transition.
 TRANSITION_SECONDS = 7
 
 
@@ -53,8 +80,16 @@ class PossessionBuild:
     n_oracle_compared: int
     #: Share of possessions beginning on the exact second of a substitution.
     boundary_ambiguous_rate: float
+    #: Derived possession length. Published because it is checkable against a
+    #: number everyone already knows: NBA possessions average about 14 seconds.
+    mean_possession_seconds: float
+    median_possession_seconds: float
     transition_ppp: float
     halfcourt_ppp: float
+    #: Points per possession by how the possession began. Start type is fixed
+    #: before the offence does anything, so unlike duration it cannot be
+    #: contaminated by the outcome.
+    ppp_by_start_type: dict[str, float] = field(default_factory=dict)
 
 
 def _lineup_hash_expr(column: str) -> pl.Expr:
@@ -87,30 +122,83 @@ def home_team_by_game(events: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def possession_windows(raw: pl.DataFrame) -> pl.DataFrame:
+    """Derive when each possession actually began, and how long it lasted.
+
+    The feed's ``start_seconds_remaining`` is the clock at the possession's
+    first *recorded event*, not at the change of hands. A team that secures a
+    defensive rebound at 9:35 and takes its first shot at 9:15 is recorded as
+    starting at 9:15, so the twenty seconds it spent holding the ball belong to
+    no possession at all. Concretely, from the first period of the first game in
+    the corpus:
+
+        possession 1   720 -> 695   (ends on a turnover)
+        possession 2   675 -> 675   (the other team, one recorded event)
+
+    Twenty seconds are missing between them, and the second possession's
+    recorded window is a single instant. Across the corpus **45% of possessions
+    had start == end**, which made ``start - end`` useless as a duration and
+    made 4.4% of shots fall into a gap between windows.
+
+    The change of hands is the previous possession's last recorded event, so
+    that is what the true start is taken from -- and the period's opening clock
+    for the first possession of each period. This is not free of assumptions,
+    but it is checkable, and it checks out: the resulting durations have a
+    median of 14s and a mean of 14.7s, which is the possession length the NBA
+    has been playing at for years. The feed's own arithmetic gave a median of 2s.
+
+    Ordering uses ``number_in_period`` over **every** row, including the handful
+    that ``count_as_possession`` excludes. Filtering first would splice the
+    dropped possession's time onto its neighbour.
+    """
+    ordered = raw.sort(["game_id", "period", "number_in_period"])
+    return ordered.with_columns(
+        pl.coalesce(
+            pl.col("end_seconds_remaining").shift(1).over(["game_id", "period"]),
+            pl.when(pl.col("period") <= 4)
+            .then(REGULATION_PERIOD_SECONDS)
+            .otherwise(OVERTIME_PERIOD_SECONDS),
+        ).alias("possession_start_clock")
+    ).with_columns(
+        (pl.col("possession_start_clock") - pl.col("end_seconds_remaining")).alias(
+            "possession_seconds"
+        )
+    )
+
+
 def build_possession_facts(
     raw: pl.DataFrame, stints: pl.DataFrame, events: pl.DataFrame, season: Season
 ) -> tuple[pl.DataFrame, PossessionBuild]:
     """Join upstream possession outcomes to our reconstructed lineups.
 
-    A possession is attributed to the stint that contains its start. The clock
-    counts down, so a stint spans ``[end_seconds_remaining, start_seconds_remaining]``
-    and a possession belongs to it when its start falls inside that window.
+    A possession is attributed to the stint that contains the change of hands.
+    The clock counts down, so a stint spans
+    ``[end_seconds_remaining, start_seconds_remaining]`` and a possession
+    belongs to it when its start falls inside that window.
     """
     home_team = home_team_by_game(events)
-    poss = raw.with_columns(
+    typed = raw.with_columns(
         pl.col("game_id").cast(pl.Utf8).str.strip_chars().str.zfill(10).alias("game_id"),
         pl.col("period").cast(pl.Int64),
+        pl.col("number_in_period").cast(pl.Int64),
         pl.col("start_seconds_remaining").cast(pl.Float64),
+        pl.col("end_seconds_remaining").cast(pl.Float64),
         pl.col("points").cast(pl.Int64),
-    ).filter(pl.col("count_as_possession"))
+    )
 
-    # Preseason rotations are not real rotations; all-star defence is not defence.
+    # The window has to be derived before any row is dropped, then the drops
+    # applied. Preseason rotations are not real rotations; all-star defence is
+    # not defence.
     keep = [
         gid
-        for gid in poss["game_id"].unique().to_list()
+        for gid in typed["game_id"].unique().to_list()
         if game_type_from_game_id(gid) in MODELLED_GAME_TYPES
     ]
-    poss = poss.filter(pl.col("game_id").is_in(keep))
+    poss = (
+        possession_windows(typed.filter(pl.col("game_id").is_in(keep)))
+        .filter(pl.col("count_as_possession"))
+        .rename({"start_seconds_remaining": "first_event_seconds_remaining"})
+    )
 
     # Their lineups, kept only for the oracle comparison.
     oracle = poss.select(
@@ -126,12 +214,16 @@ def build_possession_facts(
         "game_id",
         "period",
         "possession_number",
+        "number_in_period",
         "offense_team_id",
         "defense_team_id",
-        "start_seconds_remaining",
+        "possession_start_clock",
+        "first_event_seconds_remaining",
         "end_seconds_remaining",
+        "possession_seconds",
         "points",
         "possession_start_type",
+        "is_second_chance",
         "fg2a",
         "fg3a",
         "fta",
@@ -155,30 +247,25 @@ def build_possession_facts(
         }
     )
 
-    # Attribute a possession to the stint containing its start.
+    # Attribute a possession to the stint containing the change of hands.
     #
-    # About 15% of possessions begin on the exact second a substitution happens,
-    # and for those the attribution is genuinely ambiguous rather than merely
-    # difficult. Measured against the independent oracle:
-    #
-    #     >30s into a stint   97.8% agreement
-    #     6-30s               95.4%
-    #     at a boundary       43.2%
-    #
-    # Three quarters of the disagreements differ by exactly one player -- the
+    # Roughly 9% of possessions begin on the exact second a substitution
+    # happens, and for those the attribution is genuinely ambiguous rather than
+    # merely difficult. Measured against the independent oracle, agreement is
+    # 97.4% away from a substitution boundary and far lower on it, and three
+    # quarters of the disagreements differ by exactly one player -- the
     # signature of one substitution applied on different sides of one instant.
-    # Midpoint attribution was tried and measured *worse* (89.0% vs 89.7%
-    # overall), so this is not a rule that can be tuned into agreement: the two
-    # implementations simply answer a genuinely ambiguous question differently.
     #
-    # The honest response is to keep the simple rule and mark the ambiguity, so
-    # a downstream model can exclude or downweight those possessions instead of
-    # inheriting a coin flip it cannot see.
+    # Midpoint attribution was tried and measured *worse*, so this is not a rule
+    # that can be tuned into agreement. The honest response is to keep the
+    # simple rule and mark the ambiguity, so a downstream model can exclude or
+    # downweight those possessions instead of inheriting a coin flip it cannot
+    # see.
     joined = (
         slim.join(windows, on=["game_id", "period"], how="left")
         .filter(
-            (pl.col("start_seconds_remaining") <= pl.col("stint_start"))
-            & (pl.col("start_seconds_remaining") > pl.col("stint_end"))
+            (pl.col("possession_start_clock") <= pl.col("stint_start"))
+            & (pl.col("possession_start_clock") > pl.col("stint_end"))
         )
         .unique(subset=["game_id", "period", "possession_number"], keep="first")
     )
@@ -219,18 +306,18 @@ def build_possession_facts(
         .with_columns(
             _lineup_hash_expr("off_lineup").alias("off_lineup_hash"),
             _lineup_hash_expr("def_lineup").alias("def_lineup_hash"),
-            pl.col("possession_start_type").is_in(_LIVE_BALL_STARTS).alias("live_ball_start"),
+            pl.col("possession_start_type").is_in(LIVE_BALL_STARTS).alias("live_ball_start"),
             # True when the possession begins at the exact instant the stint
             # does -- i.e. on a substitution. Attribution there is a coin flip
             # between two defensible answers, so it is flagged rather than
             # silently trusted.
-            (pl.col("start_seconds_remaining") >= pl.col("stint_start")).alias(
-                "boundary_ambiguous"
-            ),
+            (pl.col("possession_start_clock") >= pl.col("stint_start")).alias("boundary_ambiguous"),
             pl.lit(season.start_year).cast(pl.Int64).alias("season"),
-            (pl.col("start_seconds_remaining") - pl.col("end_seconds_remaining")).alias(
-                "possession_seconds"
-            ),
+        )
+        .with_columns(
+            (
+                pl.col("live_ball_start") & (pl.col("possession_seconds") <= TRANSITION_SECONDS)
+            ).alias("transition")
         )
         .drop("_off_is_home", "stint_start", "stint_end")
         .sort(["game_id", "period", "possession_number"])
@@ -264,15 +351,26 @@ def _summarise(facts: pl.DataFrame) -> PossessionBuild:
         oracle_agreement = 0.0
         unambiguous = 0.0
 
-    # Transition is worth materially more than half-court. If our possession
+    # Transition is worth materially more than half-court. If the possession
     # classification is right, this gap should reproduce the well-known one --
     # computed, not quoted.
-    live = facts.filter(
-        pl.col("live_ball_start") & (pl.col("possession_seconds") <= TRANSITION_SECONDS)
-    )
-    half = facts.filter(
-        ~pl.col("live_ball_start") | (pl.col("possession_seconds") > TRANSITION_SECONDS)
-    )
+    #
+    # Duration is partly determined by the outcome: a made shot ends the
+    # possession at the shot, a miss ends it at the rebound a second or two
+    # later, so short possessions over-represent makes. That bias inflates
+    # transition PPP, which is why ``ppp_by_start_type`` is published beside it
+    # -- start type is fixed before the offence does anything and cannot be
+    # contaminated the same way.
+    live = facts.filter(pl.col("transition"))
+    half = facts.filter(~pl.col("transition"))
+
+    by_start = {
+        str(row[0]): as_float(row[1])
+        for row in facts.group_by("possession_start_type")
+        .agg(pl.col("points").mean())
+        .sort("possession_start_type")
+        .iter_rows()
+    }
 
     return PossessionBuild(
         n_possessions=n,
@@ -282,6 +380,9 @@ def _summarise(facts: pl.DataFrame) -> PossessionBuild:
         oracle_agreement_unambiguous=unambiguous,
         n_oracle_compared=compared.height,
         boundary_ambiguous_rate=as_float(facts["boundary_ambiguous"].mean()),
+        mean_possession_seconds=as_float(facts["possession_seconds"].mean()),
+        median_possession_seconds=as_float(facts["possession_seconds"].median()),
         transition_ppp=as_float(live["points"].mean()),
         halfcourt_ppp=as_float(half["points"].mean()),
+        ppp_by_start_type=by_start,
     )

@@ -16,7 +16,13 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-__all__ = ["BetaPrior", "fit_beta_prior", "shrink_rates"]
+__all__ = [
+    "BetaPrior",
+    "DirichletPrior",
+    "fit_beta_prior",
+    "fit_dirichlet_prior",
+    "shrink_rates",
+]
 
 
 @dataclass(frozen=True)
@@ -108,3 +114,100 @@ def shrink_rates(
         )
 
     return pl.concat(out) if out else frame
+
+
+@dataclass(frozen=True)
+class DirichletPrior:
+    """A Dirichlet prior over a categorical distribution, moment-matched.
+
+    The multinomial analogue of :class:`BetaPrior`. Where that shrinks one rate
+    toward a league mean, this shrinks a whole *mix* -- a player's distribution
+    of attempts across shot zones -- toward the league's mix.
+    """
+
+    #: League mean mix. Sums to one.
+    mean: np.ndarray
+    #: Prior weight in units of attempts.
+    strength: float
+
+    def shrink(self, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Shrink observed count rows toward the prior.
+
+        Returns ``(mix, weight)`` where ``mix`` rows sum to one and ``weight``
+        is the share of each row's estimate carried by evidence rather than by
+        the prior -- 1 for a player with thousands of attempts, near 0 for a
+        player with four.
+        """
+        totals = counts.sum(axis=1, keepdims=True)
+        mix = (counts + self.strength * self.mean) / (totals + self.strength)
+        weight = totals / (totals + self.strength)
+        return mix, weight.ravel()
+
+
+def fit_dirichlet_prior(
+    counts: np.ndarray, *, min_total: int = 50, max_strength: float = 5000.0
+) -> DirichletPrior:
+    """Moment-match a Dirichlet prior to the observed spread of category mixes.
+
+    ``counts`` is ``(n_units, n_categories)`` -- one row per player, one column
+    per zone.
+
+    The concentration is estimated from how much more the observed mixes vary
+    than multinomial sampling alone would explain. Per category, the observed
+    variance of the rates is
+
+        Var(p_j) ~ m_j (1 - m_j) / n_bar * (1 + (n_bar - 1) * rho)
+
+    so each category implies its own ``rho``, an intra-unit correlation, and
+    ``strength = (1 - rho) / rho``. The estimates are pooled across categories
+    by a weighted median rather than a mean: a rare zone with a handful of
+    attempts league-wide produces a wild ``rho``, and a mean lets that one
+    category set the shrinkage for all nine.
+
+    Units below ``min_total`` attempts are excluded from the fit for the same
+    reason ``fit_beta_prior`` excludes them -- letting the noisiest rows set the
+    variance inflates the apparent spread and then under-shrinks precisely the
+    rows that need it most.
+    """
+    counts = np.asarray(counts, dtype=float)
+    totals = counts.sum(axis=1)
+    league = counts.sum(axis=0)
+    mean = (
+        league / league.sum()
+        if league.sum() > 0
+        else np.full(counts.shape[1], 1.0 / counts.shape[1])
+    )
+
+    mask = totals >= min_total
+    if mask.sum() < 2:
+        # Not enough units to estimate a spread. A weak prior is the honest
+        # fallback; inventing a variance is not.
+        return DirichletPrior(mean=mean, strength=25.0)
+
+    rates = counts[mask] / totals[mask][:, None]
+    n_bar = float(totals[mask].mean())
+    if n_bar <= 1.0:
+        return DirichletPrior(mean=mean, strength=25.0)
+
+    observed = rates.var(axis=0, ddof=1)
+    binomial = mean * (1.0 - mean) / n_bar
+
+    rhos: list[float] = []
+    weights: list[float] = []
+    for j in range(counts.shape[1]):
+        if binomial[j] <= 0 or mean[j] <= 0:
+            continue
+        rho = (observed[j] / binomial[j] - 1.0) / (n_bar - 1.0)
+        if np.isfinite(rho) and rho > 0:
+            rhos.append(float(rho))
+            weights.append(float(mean[j]))
+    if not rhos:
+        return DirichletPrior(mean=mean, strength=float(max_strength))
+
+    order = np.argsort(rhos)
+    r = np.asarray(rhos)[order]
+    w = np.asarray(weights)[order]
+    cumulative = np.cumsum(w) / w.sum()
+    rho_pooled = float(r[int(np.searchsorted(cumulative, 0.5))])
+    strength = (1.0 - rho_pooled) / rho_pooled
+    return DirichletPrior(mean=mean, strength=float(np.clip(strength, 1.0, max_strength)))

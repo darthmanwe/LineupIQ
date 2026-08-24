@@ -183,6 +183,82 @@ def _stint_durations_positive(t: dict[str, pl.DataFrame]) -> float:
     return stints.filter(pl.col("duration_seconds") > 0).height / stints.height
 
 
+def _possession_length_plausible(t: dict[str, pl.DataFrame]) -> float:
+    """Share of possessions whose derived length is physically sensible.
+
+    This gate exists because its absence hid a real bug. The feed's
+    ``start_seconds_remaining`` is the clock at a possession's first *recorded*
+    event, not at the change of hands, so ``start - end`` was zero for 45% of
+    possessions and the published transition/half-court split was computed on a
+    duration that was not a duration. Derived from the previous possession's
+    last event instead, the distribution lands on a median of 14s -- which is
+    the number the NBA has been playing at for years, and the reason a bound
+    this crude is still worth asserting.
+    """
+    poss = t.get("possession_facts")
+    if poss is None or poss.is_empty():
+        return 0.0
+    ok = poss.filter((pl.col("possession_seconds") >= 1.0) & (pl.col("possession_seconds") <= 35.0))
+    return ok.height / poss.height
+
+
+def _possession_oracle_agreement(t: dict[str, pl.DataFrame]) -> float:
+    """Our offensive five against the upstream feed's, per possession."""
+    poss = t.get("possession_facts")
+    if poss is None or poss.is_empty():
+        return 0.0
+    compared = poss.filter(
+        pl.col("oracle_off_lineup").is_not_null() & pl.col("off_lineup").is_not_null()
+    )
+    if compared.is_empty():
+        return 0.0
+    return as_float(
+        compared.select(
+            pl.col("oracle_off_lineup").list.sort().eq(pl.col("off_lineup").list.sort()).mean()
+        ).item()
+    )
+
+
+def _possession_oracle_agreement_unambiguous(t: dict[str, pl.DataFrame]) -> float:
+    """The same, away from substitution boundaries.
+
+    On a possession that begins on the exact second of a substitution there are
+    two defensible answers, and disagreement there measures a convention rather
+    than an error. This is the number that measures the reconstruction.
+    """
+    poss = t.get("possession_facts")
+    if poss is None or poss.is_empty():
+        return 0.0
+    compared = poss.filter(
+        pl.col("oracle_off_lineup").is_not_null()
+        & pl.col("off_lineup").is_not_null()
+        & ~pl.col("boundary_ambiguous")
+    )
+    if compared.is_empty():
+        return 0.0
+    return as_float(
+        compared.select(
+            pl.col("oracle_off_lineup").list.sort().eq(pl.col("off_lineup").list.sort()).mean()
+        ).item()
+    )
+
+
+def _shot_possession_context_coverage(t: dict[str, pl.DataFrame]) -> float:
+    """Share of shots that could be placed inside a possession.
+
+    Both feeds keep the clock, at different resolutions, and this is where that
+    shows. Matching the two exactly placed only 95.84% of shots; allowing one
+    second of slack -- the coarser feed's own quantisation -- reaches 99.74% and
+    then stops improving. The gate is set below that so a genuine regression in
+    the window derivation fails the build, rather than quietly shrinking the
+    training set.
+    """
+    shots = t.get("shots_with_context")
+    if shots is None or shots.is_empty() or "has_possession_context" not in shots.columns:
+        return 0.0
+    return shots.filter(pl.col("has_possession_context")).height / shots.height
+
+
 GATES: tuple[Gate, ...] = (
     Gate(
         "valid_stints_have_five_per_team",
@@ -247,6 +323,38 @@ GATES: tuple[Gate, ...] = (
         "A zero or negative stint duration means the clock ran backwards.",
         "blocking",
         _stint_durations_positive,
+    ),
+    Gate(
+        "possession_length_plausible",
+        0.95,
+        "min",
+        "A possession lasting 0s or 90s means the window derivation is wrong, not the game.",
+        "blocking",
+        _possession_length_plausible,
+    ),
+    Gate(
+        "possession_oracle_agreement",
+        0.93,
+        "min",
+        "Our offensive five against an independent reconstruction. Measured ~95%.",
+        "blocking",
+        _possession_oracle_agreement,
+    ),
+    Gate(
+        "possession_oracle_agreement_unambiguous",
+        0.96,
+        "min",
+        "The same, excluding possessions that begin on a substitution. Measured ~97.4%.",
+        "blocking",
+        _possession_oracle_agreement_unambiguous,
+    ),
+    Gate(
+        "shot_possession_context_coverage",
+        0.99,
+        "min",
+        "Shots placeable in a possession, which is what gives them a shot clock.",
+        "blocking",
+        _shot_possession_context_coverage,
     ),
 )
 

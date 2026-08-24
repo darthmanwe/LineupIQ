@@ -222,8 +222,8 @@ def train_and_evaluate(shots: pl.DataFrame, *, run_controls: bool = True) -> Run
     return log
 
 
-def write_run_log(log: RunLog, paths: DataPaths) -> Path:
-    directory = paths.runs / "epsa"
+def write_run_log(log: RunLog, paths: DataPaths, *, kind: str = "epsa") -> Path:
+    directory = paths.runs / kind
     directory.mkdir(parents=True, exist_ok=True)
     stamp = log.created_at.replace(":", "").replace("-", "")
     path = directory / f"{stamp}_{log.git_sha}.json"
@@ -231,8 +231,8 @@ def write_run_log(log: RunLog, paths: DataPaths) -> Path:
     return path
 
 
-def latest_run(paths: DataPaths) -> dict[str, Any] | None:
-    directory = paths.runs / "epsa"
+def latest_run(paths: DataPaths, *, kind: str = "epsa") -> dict[str, Any] | None:
+    directory = paths.runs / kind
     if not directory.exists():
         return None
     runs = sorted(directory.glob("*.json"))

@@ -1,0 +1,64 @@
+{
+  "minutes_rule": "historical",
+  "n_moves": 146,
+  "n_placebo": 63,
+  "notes": [
+    "lambda selected on the first modelled season rather than a strictly earlier one; there is no earlier season in the corpus"
+  ],
+  "placebo": {
+    "correlation_projected_did": NaN,
+    "correlation_projected_observed": NaN,
+    "mean_abs_did": 2.5324351775940332,
+    "mean_abs_error_vs_did": 2.5324351775940332,
+    "mean_did": 0.25638503175387667,
+    "mean_observed": -0.017716151805945036,
+    "mean_projected": 0.0,
+    "n": 63,
+    "n_with_signed_projection": 0,
+    "sd_did": 3.2853758814546214,
+    "sd_observed": 3.135854578819543,
+    "sign_agreement_ci": [
+      NaN,
+      NaN
+    ],
+    "sign_agreement_vs_did": NaN
+  },
+  "power": {
+    "alpha": 0.05,
+    "description": "n = 146, residual sd = 4.31 per 100. Minimum detectable effect = 1.00 per 100 at alpha 0.05 and power 0.8. Sign accuracy carries a +/-8.1% 95% interval. Verdict: UNDERPOWERED.",
+    "mde": 1.0000091711965182,
+    "n": 146,
+    "residual_sd": 4.312971353312054,
+    "sign_accuracy_ci_half_width": 0.08110388675269546,
+    "target_power": 0.8,
+    "verdict": "UNDERPOWERED"
+  },
+  "real": {
+    "correlation_projected_did": -0.040169879177052475,
+    "correlation_projected_observed": -0.040522436812853085,
+    "mean_abs_did": 3.691320434470665,
+    "mean_abs_error_vs_did": 3.7305368158832524,
+    "mean_did": -0.2527913939429425,
+    "mean_observed": -0.9511782559107536,
+    "mean_projected": -0.003612961761269874,
+    "n": 146,
+    "n_with_signed_projection": 146,
+    "sd_did": 4.700799492727237,
+    "sd_observed": 4.564234280156428,
+    "sign_agreement_ci": [
+      0.41204530784847476,
+      0.5742560620145389
+    ],
+    "sign_agreement_vs_did": 0.4931506849315068
+  },
+  "residual_sd": 4.312971353312054,
+  "variance": {
+    "mean_minutes_variance_share": 0.1087497731977341,
+    "mean_se_total": 0.2847395151317152,
+    "median_minutes_variance_share": 0.07415894541112783,
+    "n": 146.0,
+    "n_without_variance": 0.0,
+    "share_interval_includes_zero": 0.7054794520547946,
+    "share_where_minutes_dominates": 0.0136986301369863
+  }
+}

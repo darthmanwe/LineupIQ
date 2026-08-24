@@ -6,10 +6,12 @@ behind every number, and an explicit refusal when there isn't one.**
 [![CI](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml/badge.svg)](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Status: milestones 1–4 of 8.** Three seasons are ingested, lineups are reconstructed
-> and validated against box-score minutes, and the shot model is fitted and scored against
-> a full baseline ladder. The trade simulator and the retrieval/LLM layer are not built;
-> their endpoints return `501 NOT_YET_BACKED` naming what will back them. No number in
+> **Status: milestones 1–5 and 7 of 8.** Three seasons are ingested, lineups are
+> reconstructed and validated against box-score minutes, two shot models (conversion and
+> selection) are fitted against full baseline ladders, RAPM is fitted on possessions with
+> published split-half reliability, and the trade projection is backtested against real
+> mid-season moves with its power analysis stated first. The retrieval/LLM layer is not
+> built; its endpoints return `501 NOT_YET_BACKED` naming what will back them. No number in
 > this README is typed by hand — every one is rendered from a run log by
 > `lineupiq report render`, and CI fails if a committed block goes stale.
 
@@ -17,20 +19,44 @@ behind every number, and an explicit refusal when there isn't one.**
 
 ## The headline finding, stated up front
 
-**Lineup context barely moves shot outcomes, and this project measures how little.**
+**Lineup context does almost nothing to shot outcomes and something real, small and
+directional to shot selection — and the direction is the opposite of what was
+pre-registered.**
 
-On leave-lineup-out — held-out five-man combinations whose players were all seen during
-training — knowing the other four players on the floor improves log loss by **+0.019%**
-for the served model and **+0.078%** for the unconstrained one. Set against a negative
-control that passes and a baseline ladder containing everything _except_ lineup
-information, that is indistinguishable from nothing.
+Three numbers, all on leave-lineup-out: held-out five-man combinations whose five players
+were each seen during training.
 
-This is not the result the project set out to find. It is reported first because a model
-that adds 0.02% over a lookup table is a model that adds 0.02% over a lookup table, and
-the ablation was pre-registered so that this outcome would be publishable rather than
-quietly dropped. What the data does support is well-calibrated shot estimates with honest
-uncertainty — which is why the refusal contract, not the lineup term, is the part worth
-reading.
+| Question | Target | Lineup context adds |
+| --- | --- | --- |
+| Does he make it? | `P(make \| shooter, zone, lineup)` | **+0.019%** log loss (served) |
+| Which shot does he take? | `P(zone \| shooter, lineup, context)` | **+0.082%** log loss (served), **+0.092%** (unconstrained) |
+
+Measuring conversion and concluding "lineups don't matter" answers the wrong question
+well. Spacing does not make a player a better corner shooter; it gets him _a corner three
+instead of a contested pull-up_. Moving the target to shot selection multiplies the
+measurable lineup effect by about four in the served model — and both model classes,
+linear and boosted, agree on it independently.
+
+It is still small. What is not small is the **direction**, and this is the part worth
+reading:
+
+`spacing_x_three` — the coefficient for "teammates who shoot threes make _this_ player
+shoot more threes" — was pre-registered as **positive** in the source before the model
+was fitted. It came out **−0.474**. Nine of ten pre-registered signs agreed; the marquee
+one did not. It survives restricting to high-volume shooters (−0.515) and survives
+centring within shooter, which removes between-player variation entirely (−0.447). Under
+the negative control — the same five players randomly reassigned to other attempts — it
+collapses to **−0.017**, so it is measuring lineups and not an artefact.
+
+The substantive reading is **shot-mix substitution**: a team's attempts live on a simplex,
+so if everyone shot more threes when surrounded by shooters the mix would run away. Put
+four shooters on the floor and somebody has to attack the rim, and for a given player that
+somebody is more often him. `spacing_min_x_three` — the _worst_ spacer on the floor —
+stays positive, so raising the floor of spacing does push toward threes while raising the
+mean pulls this particular shooter inside.
+
+The pre-registered expectation was wrong. It stays in the source, as written, next to the
+coefficient that contradicts it.
 
 ## What it does
 
@@ -123,20 +149,49 @@ be measured and what any trade projection has to rest on:
 <!-- lineupiq:begin id=results.possessions -->
 | | Value |
 |---|---|
-| Possessions | 774,467 |
+| Possessions | 776,234 |
 | Attributed to a five-man lineup | 100.00% |
-| Agreement with the independent lineup oracle | 89.95% |
-| ... restricted to possessions not starting on a substitution | **97.60%** |
-| Possessions starting on a substitution (attribution ambiguous) | 14.3% |
-| Points per possession, transition | 1.183 |
-| Points per possession, half-court | 1.071 |
+| Agreement with the independent lineup oracle | 95.08% |
+| ... restricted to possessions not starting on a substitution | **97.42%** |
+| Possessions starting on a substitution (attribution ambiguous) | 9.0% |
+| Mean possession length | 14.65s |
+| Median possession length | 14.0s |
+| Points per possession, transition | 1.490 |
+| Points per possession, half-court | 1.095 |
 
 The oracle is a second lineup reconstruction, written independently in
 another language. Away from substitution boundaries the two agree at the
 same rate our period-start solver reports exact solutions. About one
-possession in seven begins on the exact second of a substitution, where
+possession in eleven begins on the exact second of a substitution, where
 there are two defensible answers and no way to choose between them; those
 are flagged in the data rather than silently trusted.
+
+Possession length is derived, not a column in the feed, which makes it
+worth checking against something already known: the NBA has averaged
+close to 14 seconds a possession for years. That check is what caught a
+real bug here -- the feed's own start and end fields are the clock at a
+possession's first and last *recorded event*, so 45% of possessions
+measured as zero seconds long and the published transition split was
+computed on a duration that was not a duration.
+
+**Points per possession by how the possession began.** Duration is partly
+decided by the outcome: a make ends a possession at the shot, a miss at
+the rebound a beat later, so short possessions over-collect makes and the
+transition figure above is biased upward. Start type is fixed before the
+offence does anything and cannot be contaminated that way, so it is
+published beside it.
+
+| Possession start | n | PPP |
+|---|---|---|
+| OffLiveBallTurnover | 58,656 | 1.326 |
+| OffMissedShot | 251,759 | 1.172 |
+| OffMadeShot | 349,993 | 1.126 |
+| OffDeadball | 77,631 | 1.122 |
+| OffTimeout | 38,195 | 1.088 |
+
+A steal is the most valuable way to get the ball and a timeout the least,
+with about a quarter of a point per possession between them. Nothing in
+the pipeline was fitted to produce that ordering.
 <!-- lineupiq:end id=results.possessions -->
 
 ## What it refuses to answer
@@ -207,6 +262,197 @@ baseline overall. Comparing the logistic `full` against the boosted `B3` would c
 differences at once — model class and lineup information — and let a model-class effect be
 reported as a lineup effect. `full` vs `B2` and `full_gbdt` vs `B3` each differ in exactly
 one thing: whether the four lineup columns are zeroed.
+
+## Shot selection — the model that asks the right question
+
+The table above measures `P(make | shot taken)`. That is a **target mismatch**, and it is
+the most important thing this project got wrong the first time. Spacing does not make a
+player a better corner shooter; it gets him _a corner three instead of a contested
+pull-up_. If lineup context matters, it has to show up in which shot gets taken.
+
+So this model predicts the zone: nine-way `P(zone | shooter, lineup, context)`, conditional
+on an attempt happening.
+
+It is a **conditional logit**, not a multinomial one. A multinomial fit gives every zone its
+own coefficient vector, and "spacing shifts attempts toward threes" then arrives as a
+pattern spread across 45 numbers. Here each hypothesis is a single shared coefficient on a
+shot-level driver interacted with a zone attribute, so `spacing_x_three` _is_ the
+hypothesis — one number, with a sign. Twenty-odd parameters instead of two hundred also
+matters when the effect might be zero: there is far less room for the model to manufacture
+one.
+
+Every coefficient's expected direction was **written into the source before the model was
+fitted**. The audit below reports how many came out that way, and it is not a clean sweep.
+
+<!-- lineupiq:begin id=results.selection -->
+**Leave-lineup-out -- unseen five-man combinations** -- n = 405,464 attempts
+
+| Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
+|---|---|---|---|---|---|
+| S0 - league zone mix | 1.79950 | 0.2939 | 0.67107 | 0.00031 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.65925 | 0.3701 | 0.59580 | 0.03097 |  |
+| S2 - conditional logit, no lineup | 1.65265 | 0.3712 | 0.59476 | 0.03141 |  |
+| S3 - multiclass GBDT, no lineup | 1.61548 | 0.3952 | 0.58357 | 0.03590 |  |
+| **full - conditional logit + lineup (served)** | 1.65130 | 0.3718 | 0.59363 | 0.03184 | +0.082% vs S2 |
+| **full - GBDT + lineup (unconstrained)** | 1.61400 | 0.3953 | 0.58334 | 0.03601 | +0.092% vs S3 |
+
+**Walk-forward -- later games** -- n = 403,797 attempts
+
+| Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
+|---|---|---|---|---|---|
+| S0 - league zone mix | 1.80105 | 0.2848 | 0.67683 | 0.00014 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.67963 | 0.3642 | 0.60810 | 0.02894 |  |
+| S2 - conditional logit, no lineup | 1.67406 | 0.3648 | 0.60731 | 0.02936 |  |
+| S3 - multiclass GBDT, no lineup | 1.64243 | 0.3861 | 0.59678 | 0.03348 |  |
+| **full - conditional logit + lineup (served)** | 1.67283 | 0.3650 | 0.60630 | 0.02973 | +0.073% vs S2 |
+| **full - GBDT + lineup (unconstrained)** | 1.64092 | 0.3865 | 0.59708 | 0.03333 | +0.092% vs S3 |
+
+**Pre-registered sign audit -- 9/10 agree.** Each coefficient's
+direction was written down in the source before the model was fitted, so a term
+that improves log loss while pointing the wrong way cannot be presented as
+confirmation of the thing it was named after.
+
+| Term | Coefficient | Expected | Verdict | Lineup term |
+|---|---|---|---|---|
+| `into_possession_x_rim` | -0.3691 | - | agrees |  |
+| `live_ball_x_rim` | +0.0871 | + | agrees |  |
+| `opp_rim_allowed_x_rim` | +1.4821 | + | agrees | yes |
+| `opp_three_allowed_x_three` | +1.7605 | + | agrees | yes |
+| `second_chance_x_rim` | +0.2529 | + | agrees |  |
+| `shooter_mix` | +0.9958 | + | agrees |  |
+| `spacing_min_x_three` | +0.0968 | + | agrees | yes |
+| `spacing_x_three` | -0.4740 | + | **DISAGREES** | yes |
+| `team_mix` | +0.3420 | + | agrees |  |
+| `teammate_rim_x_rim` | -0.6780 | - | agrees | yes |
+
+**Within-shooter refit.** The lineup aggregates are anti-correlated with a
+shooter's own tendencies by roster construction -- put four shooters on the floor
+and the fifth man is usually the centre -- so each lineup feature is also
+re-estimated after centring it within shooter, which removes the between-player
+component entirely and asks only what happens when *this* player gets more
+spacing than he usually has.
+
+| Term | Headline | Within shooter |
+|---|---|---|
+| `opp_rim_allowed_x_rim` | +1.4821 | +1.4826 |
+| `opp_three_allowed_x_three` | +1.7605 | +1.7942 |
+| `spacing_min_x_three` | +0.0968 | +0.0615 |
+| `spacing_x_three` | -0.4740 | -0.4470 |
+| `teammate_rim_x_rim` | -0.6780 | -0.7114 |
+
+**Negative control.** With the five-man lineups randomly reassigned across attempts, the full model's log-loss gain over S2 is -0.000015 and the `spacing_x_three` coefficient collapses to -0.0169. The second number is the one worth having: a pooled metric can go flat while a coefficient stays large, and this model's claim is directional, so the coefficient is what has to die under shuffling.
+
+_Generated from run `19c905d` on Windows, seed 20260815, 671,251 attempts across 3 seasons._
+<!-- lineupiq:end id=results.selection -->
+
+The context features come from the possession layer, and one distinction there is
+load-bearing. `seconds_into_possession` is fixed at the moment the shot goes up, so it is a
+legitimate feature. `possession_seconds` and `transition` are **not**: a possession ends on
+a make at the shot but on a miss at the rebound a beat later, so a short possession is
+evidence the shot went in. Shots that end their possession convert at **93.3%** against
+**1.3%** for shots that do not. Both columns are attached for reporting and both are listed
+in `FORBIDDEN_FEATURES`; the design matrix is narrowed to a whitelist before anything is
+computed, so they cannot be read by accident rather than merely by discipline.
+
+## RAPM: the additive player model
+
+A trade delta is a difference of player effects. Without them the trade simulator would be a
+lookup table with opinions, so the possessions get a ridge regression: one row per
+possession, ten indicator columns set (five offence, five defence), points scored as the
+target.
+
+Three choices carry the result. **Offence and defence get separate penalties**, because
+offensive production is concentrated in a few players per possession while defensive credit
+is diffuse, and one shrinkage over-shrinks whichever is which. **Folds group by game, never
+by possession** — two possessions from the same game share lineups, opponent, rest and that
+night's shooting variance, and splitting between them selects a penalty far too small.
+**Reliability is measured by split half, not by fit quality.**
+
+<!-- lineupiq:begin id=results.rapm -->
+| | Value |
+|---|---|
+| Possessions | 747,352 |
+| Players estimated | 770 |
+| Ridge penalty, offence / defence | 2,000 / 4,000 |
+| Effective degrees of freedom | 643.5 (of 1,541 columns) |
+| Condition number | 215.4 |
+| League points per possession | 1.1532 |
+| Home advantage | +1.94 per 100 |
+| Between-player spread, offence / defence | 1.58 / 1.09 sd |
+
+**Split-half reliability -- the number that decides whether to believe any of it.**
+
+| Side | Odd vs even games (r) | Spearman | Full-sample (Spearman-Brown) |
+|---|---|---|---|
+| off | +0.394 | +0.327 | +0.565 |
+| def | +0.422 | +0.359 | +0.594 |
+
+Measured on 636 players with at least 200 possessions in each half. This, and not cross-validated error, is the honest test: possession outcomes are dominated by shot noise, so a ridge model can cut CV error while its player coefficients are close to arbitrary. Two disjoint halves of the same league agreeing about who is good cannot happen by accident -- and a correlation near 0.4 says the agreement is real but moderate. Three seasons is not enough for RAPM to be precise, and the reliability figure is published rather than the leaderboard alone.
+
+**Identifiability.** 51 of 770 players share more than 85% of their floor time with a single teammate (median 52%). For those, the pair's *sum* is identified and neither coefficient is, so they are flagged and not served as point estimates.
+
+**Boundary sensitivity.** Dropping the 9.0% of possessions that begin on a substitution -- where two lineup attributions are both defensible -- moves offensive coefficients by 0.270 per 100 on average (correlation 0.9750) and defensive by 0.181 (correlation 0.9756). Measured rather than assumed, because "we excluded 9% of the data and nothing moved" and "we excluded 9% and everything moved" call for very different amounts of caution downstream.
+<!-- lineupiq:end id=results.rapm -->
+
+The leaderboard is not in this README, because a leaderboard is the least interesting output
+of a model whose reliability is 0.4. `lineupiq rapm` prints it, and it does pass the eye
+test: Jokić first by a clear margin, then Gilgeous-Alexander and Antetokounmpo, with
+Draymond Green leading defence. Nothing in the pipeline was fitted to produce that ordering
+— but the possession count next to each name is the column that matters, and it is there
+because a first version printed zeros and hid the one reserve whose +5.5 came off 8,098
+possessions against everyone else's 20,000-plus.
+
+## The trade simulator, and its counterfactual backtest
+
+This is the milestone the original design document had no validation plan for. It makes one
+falsifiable claim — *this move changes the receiving team by that much* — and the honest
+answer is that at this sample size the claim cannot be tested.
+
+The **minutes rule is a visible input**, never a silent assumption. How much an arriving
+player plays is a coaching decision nothing in this repository can observe, so it is a named
+parameter printed next to every number it produced and returned in the API response.
+
+<!-- lineupiq:begin id=results.trade -->
+**The power analysis, computed and committed before any result.**
+
+| | Value |
+|---|---|
+| Evaluable mid-season moves | 146 |
+| Team net-rating noise (sd) | 4.31 per 100 |
+| Minimum detectable effect | **1.00 per 100** |
+| Effects this model actually projects | ~1.0 per 100 |
+| Sign-accuracy 95% half-width | +/-8.1% |
+| Verdict | **UNDERPOWERED** |
+
+The minimum detectable effect is the same size as the effects being claimed. That is
+not a result to work around -- it is the result. No accuracy claim follows from what
+is below, and committing to that before running the backtest is the point of stating
+it first.
+
+| Minutes rule | n | Mean projected | Mean DiD | Corr | Sign agreement | MAE vs DiD |
+|---|---|---|---|---|---|---|
+| `conservative` | 146 | -0.003 | -0.253 | -0.040 | 49.3% [41%, 57%] | 3.710 |
+| `historical` | 146 | -0.004 | -0.253 | -0.040 | 49.3% [41%, 57%] | 3.731 |
+| `inherit` | 146 | -0.004 | -0.253 | -0.040 | 49.3% [41%, 57%] | 3.743 |
+
+**The placebo arm is the number that settles it.** The identical machinery runs on
+64 players who did *not* move, pretending each "arrived" at his
+own team on a matched date. Swapping a player for himself projects exactly +0.000, which is the identity holding -- if it drifted, every number above would be measuring a pipeline bug.
+
+Those placebos still show a mean absolute DiD swing of **2.72 per 100**. That is how far a team's rating moves across an arbitrary mid-season
+cutoff with no roster change at all, and it is the floor below which nothing here
+is measurable. The real moves' projection error is 3.74 -- larger than the placebo swing, so **the projection does not beat assuming no
+change.**
+
+**Variance decomposition.** The minutes rule carries 3% of a projection's variance on average and dominates it in 0% of cases; 65% of 80% intervals contain zero. The plan expected the minutes assumption to dominate, and it does not -- the player estimates are the larger term. That is worth knowing precisely because it contradicts the design's own guess about where the uncertainty lived.
+
+_Caveat: lambda selected on the first modelled season rather than a strictly earlier one; there is no earlier season in the corpus._
+<!-- lineupiq:end id=results.trade -->
+
+One honest correction to the plan: it predicted the minutes assumption would dominate the
+projection's variance, and the measurement says it does not. The player estimates are the
+larger term. The design's guess about where the uncertainty lived was wrong, and the
+decomposition is published rather than the guess.
 
 ## Architecture
 

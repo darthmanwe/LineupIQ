@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 
 import { envelope } from "./http/envelope";
 import { notYetBacked, problem, withdrawn } from "./http/problem";
+import { mountLive } from "./routes/live";
 import { ROUTES, type RouteSpec } from "./routes/registry";
 
 export type Bindings = {
@@ -125,6 +126,10 @@ function mountUnbacked(spec: RouteSpec): void {
   if (spec.method === "GET") app.get(spec.path, handler);
   else app.post(spec.path, handler);
 }
+
+// Live routes first: Hono matches in registration order, and the unbacked
+// mounts below must never shadow a route that is actually backed.
+mountLive(app);
 
 for (const spec of ROUTES) {
   if (spec.state !== "live") mountUnbacked(spec);

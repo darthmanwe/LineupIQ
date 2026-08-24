@@ -2,16 +2,37 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import polars as pl
 
 from lineupiq.paths import DataPaths
 from lineupiq.seasons import SEASON_COVERAGE, Season
 from lineupiq.validate.contracts import derive_contract, write_contract
 
-__all__ = ["GOLD_TABLES", "available_seasons", "load_all_gold", "load_gold", "refresh_contracts"]
+__all__ = [
+    "GOLD_TABLES",
+    "POOLED_GOLD_TABLES",
+    "POOLED_PARTITION",
+    "available_seasons",
+    "load_all_gold",
+    "load_gold",
+    "load_pooled_gold",
+    "refresh_contracts",
+    "write_pooled_gold",
+]
 
-#: Tables that are committed and contract-checked.
+#: Season-partitioned tables that are committed and contract-checked.
 GOLD_TABLES: tuple[str, ...] = ("shot_facts", "stints", "dim_player", "possession_facts")
+
+#: Committed tables that are *not* partitioned by season, because the model
+#: behind them pools seasons by construction. RAPM is fitted across the whole
+#: corpus at once -- a per-season partition would imply three independent fits
+#: that do not exist.
+POOLED_GOLD_TABLES: tuple[str, ...] = ("player_rapm",)
+
+#: Partition name used for pooled tables.
+POOLED_PARTITION = "pooled"
 
 
 def available_seasons(paths: DataPaths, table: str = "shot_facts") -> list[Season]:
@@ -54,6 +75,24 @@ def load_all_gold(
     return frame
 
 
+def pooled_path(paths: DataPaths, table: str) -> Path:
+    return paths.gold / table / POOLED_PARTITION / "part.parquet"
+
+
+def load_pooled_gold(paths: DataPaths, table: str) -> pl.DataFrame:
+    path = pooled_path(paths, table)
+    if not path.exists():
+        raise FileNotFoundError(f"{table} is not built. Run the command that produces it first.")
+    return pl.read_parquet(path)
+
+
+def write_pooled_gold(paths: DataPaths, table: str, frame: pl.DataFrame) -> Path:
+    path = pooled_path(paths, table)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_parquet(path)
+    return path
+
+
 def refresh_contracts(paths: DataPaths) -> list[str]:
     """Re-derive and write a contract for every committed gold partition."""
     written: list[str] = []
@@ -63,4 +102,12 @@ def refresh_contracts(paths: DataPaths) -> list[str]:
             contract = derive_contract(frame, table=table, partition=f"season={season.start_year}")
             write_contract(contract, paths.contracts)
             written.append(f"{table}__season={season.start_year}")
+    for table in POOLED_GOLD_TABLES:
+        if not pooled_path(paths, table).exists():
+            continue
+        frame = load_pooled_gold(paths, table)
+        write_contract(
+            derive_contract(frame, table=table, partition=POOLED_PARTITION), paths.contracts
+        )
+        written.append(f"{table}__{POOLED_PARTITION}")
     return written

@@ -126,7 +126,7 @@ def fit_profiles(train: pl.DataFrame) -> Profiles:
     # --- defence: what opponents shot with this player on the floor ------
     defenders = (
         train.select(pl.col("lineup_against").alias("defender_id"), "made", "zone_id")
-        .explode("defender_id")
+        .explode("defender_id", empty_as_null=True)
         .drop_nulls("defender_id")
     )
 

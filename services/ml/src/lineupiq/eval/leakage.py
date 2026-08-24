@@ -31,6 +31,14 @@ FORBIDDEN_FEATURES: dict[str, str] = {
     "is_assisted": "assist is recorded only on makes -- direct label leak",
     "made": "the label",
     "shot_points": "derived from the label's zone at scoring time",
+    # Possession length is measured to the possession's last event. A possession
+    # ends on a made shot at the shot itself, but on a miss at the rebound a
+    # second or two later -- so a short possession is evidence that the shot
+    # went in. Shots that end their possession convert at 93.3%; shots that do
+    # not, at 1.3%. Anything derived from the duration carries that signal.
+    "possession_seconds": "possession length is partly decided by whether the shot went in",
+    "transition": "a duration cut, and duration is outcome-contaminated",
+    "possession_points": "includes the points scored by this very shot",
 }
 
 

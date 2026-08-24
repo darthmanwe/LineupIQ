@@ -13,6 +13,7 @@ number inside them.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Any
 import polars as pl
 
 from lineupiq.io.gold import load_all_gold
+from lineupiq.models.moves import CLAIMED_EFFECT_PER_100
 from lineupiq.models.support import load_thresholds
 from lineupiq.models.train import latest_run
 from lineupiq.paths import DataPaths
@@ -38,6 +40,7 @@ BLOCK_RE = re.compile(
 class RenderContext:
     paths: DataPaths
     run: dict[str, Any] | None
+    selection_run: dict[str, Any] | None
     shots: pl.DataFrame
     stints: pl.DataFrame
 
@@ -201,34 +204,70 @@ def _possessions(ctx: RenderContext) -> str:
     unambiguous = as_float(clean["m"].mean()) if clean.height else 0.0
     boundary_rate = as_float(poss["boundary_ambiguous"].mean())
 
-    live = poss.filter(pl.col("live_ball_start") & (pl.col("possession_seconds") <= 7))
-    half = poss.filter(~pl.col("live_ball_start") | (pl.col("possession_seconds") > 7))
+    # The transition flag is read from the data, not re-derived here. A report
+    # that recomputes a definition is a report that will eventually describe a
+    # different split than the one the model was fitted on.
+    live = poss.filter(pl.col("transition"))
+    half = poss.filter(~pl.col("transition"))
 
-    return "\n".join(
-        [
-            "",
-            "| | Value |",
-            "|---|---|",
-            f"| Possessions | {n:,} |",
-            f"| Attributed to a five-man lineup | "
-            f"{poss.filter(pl.col('off_lineup_hash').is_not_null()).height / n:.2%} |",
-            f"| Agreement with the independent lineup oracle | {overall:.2%} |",
-            f"| ... restricted to possessions not starting on a substitution | "
-            f"**{unambiguous:.2%}** |",
-            f"| Possessions starting on a substitution (attribution ambiguous) | "
-            f"{boundary_rate:.1%} |",
-            f"| Points per possession, transition | {as_float(live['points'].mean()):.3f} |",
-            f"| Points per possession, half-court | {as_float(half['points'].mean()):.3f} |",
-            "",
-            "The oracle is a second lineup reconstruction, written independently in",
-            "another language. Away from substitution boundaries the two agree at the",
-            "same rate our period-start solver reports exact solutions. About one",
-            "possession in seven begins on the exact second of a substitution, where",
-            "there are two defensible answers and no way to choose between them; those",
-            "are flagged in the data rather than silently trusted.",
-            "",
-        ]
+    by_start = (
+        poss.group_by("possession_start_type")
+        .agg(pl.len().alias("n"), pl.col("points").mean().alias("ppp"))
+        .sort("ppp", descending=True)
     )
+
+    lines = [
+        "",
+        "| | Value |",
+        "|---|---|",
+        f"| Possessions | {n:,} |",
+        f"| Attributed to a five-man lineup | "
+        f"{poss.filter(pl.col('off_lineup_hash').is_not_null()).height / n:.2%} |",
+        f"| Agreement with the independent lineup oracle | {overall:.2%} |",
+        f"| ... restricted to possessions not starting on a substitution | **{unambiguous:.2%}** |",
+        f"| Possessions starting on a substitution (attribution ambiguous) | {boundary_rate:.1%} |",
+        f"| Mean possession length | {as_float(poss['possession_seconds'].mean()):.2f}s |",
+        f"| Median possession length | {as_float(poss['possession_seconds'].median()):.1f}s |",
+        f"| Points per possession, transition | {as_float(live['points'].mean()):.3f} |",
+        f"| Points per possession, half-court | {as_float(half['points'].mean()):.3f} |",
+        "",
+        "The oracle is a second lineup reconstruction, written independently in",
+        "another language. Away from substitution boundaries the two agree at the",
+        "same rate our period-start solver reports exact solutions. About one",
+        "possession in eleven begins on the exact second of a substitution, where",
+        "there are two defensible answers and no way to choose between them; those",
+        "are flagged in the data rather than silently trusted.",
+        "",
+        "Possession length is derived, not a column in the feed, which makes it",
+        "worth checking against something already known: the NBA has averaged",
+        "close to 14 seconds a possession for years. That check is what caught a",
+        "real bug here -- the feed's own start and end fields are the clock at a",
+        "possession's first and last *recorded event*, so 45% of possessions",
+        "measured as zero seconds long and the published transition split was",
+        "computed on a duration that was not a duration.",
+        "",
+        "**Points per possession by how the possession began.** Duration is partly",
+        "decided by the outcome: a make ends a possession at the shot, a miss at",
+        "the rebound a beat later, so short possessions over-collect makes and the",
+        "transition figure above is biased upward. Start type is fixed before the",
+        "offence does anything and cannot be contaminated that way, so it is",
+        "published beside it.",
+        "",
+        "| Possession start | n | PPP |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| {start_type} | {int(count):,} | {as_float(ppp):.3f} |"
+        for start_type, count, ppp in by_start.iter_rows()
+    ]
+    lines += [
+        "",
+        "A steal is the most valuable way to get the ball and a timeout the least,",
+        "with about a quarter of a point per possession between them. Nothing in",
+        "the pipeline was fitted to produce that ordering.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _data_quality(ctx: RenderContext) -> str:
@@ -253,9 +292,295 @@ def _data_quality(ctx: RenderContext) -> str:
     )
 
 
+def _selection_results(ctx: RenderContext) -> str:
+    """The shot-selection ladder -- the model that asks the right question."""
+    run = ctx.selection_run
+    if run is None:
+        return "\n_No run log. Run `lineupiq selection` first._\n"
+
+    labels = {
+        "S0": "S0 - league zone mix",
+        "S1": "S1 - shooter's own shrunk mix (lookup table)",
+        "S2": "S2 - conditional logit, no lineup",
+        "S3": "S3 - multiclass GBDT, no lineup",
+        "full": "**full - conditional logit + lineup (served)**",
+        "full_gbdt": "**full - GBDT + lineup (unconstrained)**",
+    }
+    counterpart = {"full": "S2", "full_gbdt": "S3"}
+
+    out: list[str] = [""]
+    for split, models in run.get("metrics", {}).items():
+        title = {
+            "walk_forward": "Walk-forward -- later games",
+            "leave_lineup_out": "Leave-lineup-out -- unseen five-man combinations",
+        }.get(split, split)
+        n = int(models.get("full", {}).get("n", 0))
+        out += [
+            f"**{title}** -- n = {n:,} attempts",
+            "",
+            "| Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |",
+            "|---|---|---|---|---|---|",
+        ]
+        for key in ("S0", "S1", "S2", "S3", "full", "full_gbdt"):
+            if key not in models:
+                continue
+            m = models[key]
+            verdict = ""
+            if (ref := counterpart.get(key)) and ref in models:
+                base = models[ref]["log_loss"]
+                verdict = f"{(base - m['log_loss']) / base:+.3%} vs {ref}"
+            out.append(
+                f"| {labels.get(key, key)} | {_fmt(m['log_loss'])} | "
+                f"{_fmt(m['top1_accuracy'], '.4f')} | {_fmt(m['three_log_loss'])} | "
+                f"{_fmt(m['three_resolution'])} | {verdict} |"
+            )
+        out.append("")
+
+    audit = run.get("model", {}).get("sign_audit", {})
+    within = run.get("model", {}).get("within_shooter_coefficients", {})
+    if audit:
+        agree = sum(1 for row in audit.values() if row.get("verdict") == "agrees")
+        out += [
+            f"**Pre-registered sign audit -- {agree}/{len(audit)} agree.** Each coefficient's",
+            "direction was written down in the source before the model was fitted, so a term",
+            "that improves log loss while pointing the wrong way cannot be presented as",
+            "confirmation of the thing it was named after.",
+            "",
+            "| Term | Coefficient | Expected | Verdict | Lineup term |",
+            "|---|---|---|---|---|",
+        ]
+        for name, row in audit.items():
+            expected = "+" if row.get("expected_sign") == 1 else "-"
+            verdict = "agrees" if row.get("verdict") == "agrees" else "**DISAGREES**"
+            lineup = "yes" if row.get("is_lineup") else ""
+            out.append(
+                f"| `{name}` | {_fmt(row.get('value'), '+.4f')} | {expected} | "
+                f"{verdict} | {lineup} |"
+            )
+        out.append("")
+
+    if within:
+        out += [
+            "**Within-shooter refit.** The lineup aggregates are anti-correlated with a",
+            "shooter's own tendencies by roster construction -- put four shooters on the floor",
+            "and the fifth man is usually the centre -- so each lineup feature is also",
+            "re-estimated after centring it within shooter, which removes the between-player",
+            "component entirely and asks only what happens when *this* player gets more",
+            "spacing than he usually has.",
+            "",
+            "| Term | Headline | Within shooter |",
+            "|---|---|---|",
+        ]
+        for name, value in within.items():
+            headline = audit.get(name, {}).get("value")
+            out.append(f"| `{name}` | {_fmt(headline, '+.4f')} | {_fmt(value, '+.4f')} |")
+        out.append("")
+
+    controls = run.get("controls", {})
+    gain = controls.get("shuffled_lineup_logloss_gain")
+    spacing = controls.get("shuffled_lineup_spacing_coefficient")
+    if gain is not None:
+        out += [
+            "**Negative control.** With the five-man lineups randomly reassigned across "
+            f"attempts, the full model's log-loss gain over S2 is {gain:+.6f} and the "
+            f"`spacing_x_three` coefficient collapses to {spacing:+.4f}. The second number is "
+            "the one worth having: a pooled metric can go flat while a coefficient stays "
+            "large, and this model's claim is directional, so the coefficient is what has to "
+            "die under shuffling.",
+            "",
+        ]
+
+    meta = (
+        f"_Generated from run `{run.get('git_sha')}` on {run.get('platform')}, "
+        f"seed {run.get('seed')}, {run.get('n_shots', 0):,} attempts across "
+        f"{len(run.get('seasons', []))} seasons._"
+    )
+    out += [meta, ""]
+    return "\n".join(out)
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _rapm(ctx: RenderContext) -> str:
+    """RAPM, and the reliability number that decides whether to believe it."""
+    run = _read_json(ctx.paths.runs / "rapm" / "run.json")
+    if run is None:
+        return "\n_Not yet fitted. Run `lineupiq rapm`._\n"
+
+    reliability = run.get("reliability", {})
+    co = run.get("co_occurrence", {})
+    boundary = run.get("boundary_sensitivity", {})
+    spread = run.get("spread", {})
+
+    lines = [
+        "",
+        "| | Value |",
+        "|---|---|",
+        f"| Possessions | {int(run['n_possessions']):,} |",
+        f"| Players estimated | {int(run['n_players']):,} |",
+        f"| Ridge penalty, offence / defence | {run['lambda_offence']:,.0f} / "
+        f"{run['lambda_defence']:,.0f} |",
+        f"| Effective degrees of freedom | {run['effective_df']:,.1f} "
+        f"(of {2 * int(run['n_players']) + 1:,} columns) |",
+        f"| Condition number | {run['condition_number']:,.1f} |",
+        f"| League points per possession | {run['league_ppp']:.4f} |",
+        f"| Home advantage | {run['home_advantage']:+.2f} per 100 |",
+        f"| Between-player spread, offence / defence | {spread.get('off_sd', 0):.2f} / "
+        f"{spread.get('def_sd', 0):.2f} sd |",
+        "",
+    ]
+
+    if reliability.get("n_players"):
+        lines += [
+            "**Split-half reliability -- the number that decides whether to believe any of it.**",
+            "",
+            "| Side | Odd vs even games (r) | Spearman | Full-sample (Spearman-Brown) |",
+            "|---|---|---|---|",
+        ]
+        for side in ("off", "def"):
+            lines.append(
+                f"| {side} | {reliability[f'{side}_split_half_r']:+.3f} | "
+                f"{reliability[f'{side}_spearman_rho']:+.3f} | "
+                f"{reliability[f'{side}_full_sample_reliability']:+.3f} |"
+            )
+        lines += [
+            "",
+            f"Measured on {int(reliability['n_players']):,} players with at least "
+            f"{int(reliability['min_possessions'])} possessions in each half. This, and not "
+            "cross-validated error, is the honest test: possession outcomes are dominated by "
+            "shot noise, so a ridge model can cut CV error while its player coefficients are "
+            "close to arbitrary. Two disjoint halves of the same league agreeing about who is "
+            "good cannot happen by accident -- and a correlation near 0.4 says the agreement is "
+            "real but moderate. Three seasons is not enough for RAPM to be precise, and the "
+            "reliability figure is published rather than the leaderboard alone.",
+            "",
+        ]
+
+    if co:
+        lines += [
+            f"**Identifiability.** {int(co['n_flagged'])} of {int(co['n_players'])} players "
+            f"share more than {co['ceiling']:.0%} of their floor time with a single teammate "
+            f"(median {co['median_max_co_occurrence']:.0%}). For those, the pair's *sum* is "
+            "identified and neither coefficient is, so they are flagged and not served as "
+            "point estimates.",
+            "",
+        ]
+
+    if boundary:
+        lines += [
+            f"**Boundary sensitivity.** Dropping the {boundary['share_excluded']:.1%} of "
+            "possessions that begin on a substitution -- where two lineup attributions are "
+            "both defensible -- moves offensive coefficients by "
+            f"{boundary['off_mean_abs_change']:.3f} per 100 on average "
+            f"(correlation {boundary['off_correlation']:.4f}) and defensive by "
+            f"{boundary['def_mean_abs_change']:.3f} "
+            f"(correlation {boundary['def_correlation']:.4f}). Measured rather than assumed, "
+            'because "we excluded 9% of the data and nothing moved" and "we excluded 9% and '
+            'everything moved" call for very different amounts of caution downstream.',
+            "",
+        ]
+    return "\n".join(lines)
+
+
+def _trade(ctx: RenderContext) -> str:
+    """The counterfactual backtest, with its power analysis first."""
+    directory = ctx.paths.runs / "trade"
+    runs: dict[str, dict[str, Any]] = {}
+    if directory.exists():
+        for path in sorted(directory.glob("*.json")):
+            payload = _read_json(path)
+            if payload:
+                runs[path.stem] = payload
+    if not runs:
+        return "\n_Not yet backtested. Run `lineupiq backtest`._\n"
+
+    # `inherit` is the reference for the prose below: it is the default rule and
+    # the cleanest counterfactual. Taking whichever file sorted first would make
+    # the narrative depend on alphabetical order.
+    reference = runs.get("inherit") or next(iter(runs.values()))
+    power = reference["power"]
+
+    lines = [
+        "",
+        "**The power analysis, computed and committed before any result.**",
+        "",
+        "| | Value |",
+        "|---|---|",
+        f"| Evaluable mid-season moves | {int(power['n'])} |",
+        f"| Team net-rating noise (sd) | {power['residual_sd']:.2f} per 100 |",
+        f"| Minimum detectable effect | **{power['mde']:.2f} per 100** |",
+        f"| Effects this model actually projects | ~{CLAIMED_EFFECT_PER_100:.1f} per 100 |",
+        f"| Sign-accuracy 95% half-width | +/-{power['sign_accuracy_ci_half_width']:.1%} |",
+        f"| Verdict | **{power['verdict']}** |",
+        "",
+        "The minimum detectable effect is the same size as the effects being claimed. That is",
+        "not a result to work around -- it is the result. No accuracy claim follows from what",
+        "is below, and committing to that before running the backtest is the point of stating",
+        "it first.",
+        "",
+        "| Minutes rule | n | Mean projected | Mean DiD | Corr | Sign agreement | MAE vs DiD |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for name, run in runs.items():
+        real = run.get("real", {})
+        if not real.get("n"):
+            continue
+        low, high = real.get("sign_agreement_ci", [float("nan"), float("nan")])
+        lines.append(
+            f"| `{name}` | {int(real['n'])} | {real['mean_projected']:+.3f} | "
+            f"{real['mean_did']:+.3f} | {real['correlation_projected_did']:+.3f} | "
+            f"{real['sign_agreement_vs_did']:.1%} "
+            f"[{as_float(low):.0%}, {as_float(high):.0%}] | "
+            f"{real['mean_abs_error_vs_did']:.3f} |"
+        )
+
+    placebo = reference.get("placebo", {})
+    if placebo.get("n"):
+        lines += [
+            "",
+            "**The placebo arm is the number that settles it.** The identical machinery runs on",
+            f'{int(placebo["n"])} players who did *not* move, pretending each "arrived" at his',
+            "own team on a matched date. Swapping a player for himself projects exactly "
+            f"{placebo['mean_projected']:+.3f}, which is the identity holding -- if it drifted, "
+            "every number above would be measuring a pipeline bug.",
+            "",
+            f"Those placebos still show a mean absolute DiD swing of **{placebo['mean_abs_did']:.2f} "
+            "per 100**. That is how far a team's rating moves across an arbitrary mid-season",
+            "cutoff with no roster change at all, and it is the floor below which nothing here",
+            f"is measurable. The real moves' projection error is {reference['real']['mean_abs_error_vs_did']:.2f}"
+            " -- larger than the placebo swing, so **the projection does not beat assuming no",
+            "change.**",
+            "",
+        ]
+
+    variance = reference.get("variance", {})
+    if variance.get("mean_minutes_variance_share") is not None:
+        lines += [
+            f"**Variance decomposition.** The minutes rule carries "
+            f"{variance['mean_minutes_variance_share']:.0%} of a projection's variance on "
+            f"average and dominates it in {variance['share_where_minutes_dominates']:.0%} of "
+            f"cases; {variance['share_interval_includes_zero']:.0%} of 80% intervals contain "
+            "zero. The plan expected the minutes assumption to dominate, and it does not -- the "
+            "player estimates are the larger term. That is worth knowing precisely because it "
+            "contradicts the design's own guess about where the uncertainty lived.",
+            "",
+        ]
+
+    for note in reference.get("notes", []):
+        lines += [f"_Caveat: {note}._", ""]
+    return "\n".join(lines)
+
+
 RENDERERS = {
     "results.estimability": _estimability,
     "results.model": _model_results,
+    "results.selection": _selection_results,
+    "results.rapm": _rapm,
+    "results.trade": _trade,
     "results.dataquality": _data_quality,
     "results.possessions": _possessions,
 }
@@ -265,6 +590,7 @@ def render_blocks(paths: DataPaths) -> dict[str, str]:
     ctx = RenderContext(
         paths=paths,
         run=latest_run(paths),
+        selection_run=latest_run(paths, kind="selection"),
         shots=load_all_gold(paths, "shot_facts"),
         stints=load_all_gold(paths, "stints"),
     )

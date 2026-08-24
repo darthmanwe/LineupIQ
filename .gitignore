@@ -20,6 +20,11 @@ kaggle.json
 # ---------------------------------------------------------------------------
 data/bronze/
 data/silver/
+
+# Partial run logs. Written after each CV split so a twenty-minute job killed at
+# minute eighteen keeps its finished folds, but never a published artefact --
+# `latest_run` must only ever see complete logs.
+services/ml/runs/*_partial/
 data/d1/load.sql
 data/vectors/*.ndjson
 

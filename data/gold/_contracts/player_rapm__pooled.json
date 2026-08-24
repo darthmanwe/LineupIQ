@@ -1,0 +1,69 @@
+{
+  "columns": [
+    "player_id",
+    "off_rapm",
+    "def_rapm",
+    "total_rapm",
+    "off_se",
+    "def_se",
+    "off_includes_zero",
+    "def_includes_zero",
+    "possessions"
+  ],
+  "content_sha256": "560b10673adc0247f09f6d1176f38c529e0a82ba7046277c8ebe8745f7212801",
+  "dtypes": {
+    "def_includes_zero": "Boolean",
+    "def_rapm": "Float64",
+    "def_se": "Float64",
+    "off_includes_zero": "Boolean",
+    "off_rapm": "Float64",
+    "off_se": "Float64",
+    "player_id": "Int64",
+    "possessions": "Int64",
+    "total_rapm": "Float64"
+  },
+  "null_rates": {
+    "def_includes_zero": 0.0,
+    "def_rapm": 0.0,
+    "def_se": 0.0,
+    "off_includes_zero": 0.0,
+    "off_rapm": 0.0,
+    "off_se": 0.0,
+    "player_id": 0.0,
+    "possessions": 0.0,
+    "total_rapm": 0.0
+  },
+  "numeric_ranges": {
+    "def_rapm": [
+      -2.993869360655167,
+      4.7370468827111125
+    ],
+    "def_se": [
+      0.0,
+      0.9283850648580071
+    ],
+    "off_rapm": [
+      -5.004970774619597,
+      8.129786773918882
+    ],
+    "off_se": [
+      0.05941157250970767,
+      1.3126196397795113
+    ],
+    "player_id": [
+      2544.0,
+      1642530.0
+    ],
+    "possessions": [
+      1.0,
+      38490.0
+    ],
+    "total_rapm": [
+      -6.109148528097206,
+      9.798106026759147
+    ]
+  },
+  "partition": "pooled",
+  "rows": 770,
+  "table": "player_rapm"
+}
