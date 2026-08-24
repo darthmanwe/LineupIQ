@@ -505,8 +505,17 @@ export function mountLive(app: App): void {
           detail: model.reason ?? "No selection run log was exported.",
         });
       }
-      const disagreements = Object.entries(model.sign_audit ?? {})
-        .filter(([, row]) => row.verdict !== "agrees")
+      const audit = Object.entries(model.sign_audit ?? {});
+      // Three verdicts, and conflating two of them was a real bug here. A term
+      // whose interval spans zero has not contradicted its pre-registered sign
+      // — the data cannot sign it either way — and reporting that as a
+      // contradiction overstates the finding in the model's own favour, by
+      // making it look like it produced more surprises than it did.
+      const disagreements = audit
+        .filter(([, row]) => row.verdict === "DISAGREES")
+        .map(([name]) => name);
+      const indeterminate = audit
+        .filter(([, row]) => row.verdict === "indeterminate")
         .map(([name]) => name);
 
       return c.json(
@@ -521,12 +530,21 @@ export function mountLive(app: App): void {
           // Surfaced as a warning rather than buried in the payload: a
           // coefficient that contradicts its pre-registered sign is the most
           // interesting thing about this model, not a footnote.
-          warnings: disagreements.length
-            ? [
-                `${disagreements.length} coefficient(s) contradict their pre-registered ` +
-                  `sign: ${disagreements.join(", ")}. See docs/modeling.md.`,
-              ]
-            : [],
+          warnings: [
+            ...(disagreements.length
+              ? [
+                  `${disagreements.length} coefficient(s) contradict their pre-registered ` +
+                    `sign: ${disagreements.join(", ")}. See docs/modeling.md.`,
+                ]
+              : []),
+            ...(indeterminate.length
+              ? [
+                  `${indeterminate.length} coefficient(s) have a 95% interval spanning ` +
+                    `zero and are neither confirmed nor contradicted: ` +
+                    `${indeterminate.join(", ")}. Do not read a sign off them.`,
+                ]
+              : []),
+          ],
         })
       );
     } catch (error) {

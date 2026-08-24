@@ -335,6 +335,38 @@ describe("lineup hash endpoint", () => {
 });
 
 describe("model and evaluation routes", () => {
+  it("does not report an indeterminate coefficient as a contradiction", async () => {
+    // Three verdicts, and conflating two of them overstates the finding in the
+    // model's own favour: an interval spanning zero has not contradicted a
+    // pre-registered sign, it has failed to resolve it. The distinction is the
+    // reason standard errors were added.
+    const response = await get("/api/models/selection");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { sign_audit: Record<string, { verdict: string; ci95?: [number, number] }> };
+      meta: { warnings: string[] };
+    };
+    const rows = Object.entries(body.data.sign_audit ?? {});
+    expect(rows.length).toBeGreaterThan(0);
+
+    const contradiction = body.meta.warnings.find((w) => w.includes("contradict"));
+    const unresolved = body.meta.warnings.find((w) => w.includes("spanning"));
+    for (const [name, row] of rows) {
+      if (row.verdict === "indeterminate") {
+        expect(contradiction ?? "", name).not.toContain(name);
+        expect(unresolved ?? "", name).toContain(name);
+      }
+      if (row.verdict === "DISAGREES") {
+        expect(contradiction ?? "", name).toContain(name);
+      }
+      // Whenever an interval is served, the verdict must agree with it.
+      if (row.ci95) {
+        const straddles = row.ci95[0] <= 0 && 0 <= row.ci95[1];
+        expect(row.verdict === "indeterminate", name).toBe(straddles);
+      }
+    }
+  });
+
   it("surfaces a contradicted pre-registered sign as a warning", async () => {
     const response = await get("/api/models/selection");
     expect(response.status).toBe(200);

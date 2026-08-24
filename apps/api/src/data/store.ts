@@ -65,8 +65,22 @@ export type SelectionModelData = {
   git_sha?: string;
   term_names?: string[];
   coefficients?: number[];
+  /** Null until the served fit has had a covariance computed. */
+  standard_errors?: (number | null)[] | null;
   observed_mix?: Record<string, number>;
-  sign_audit?: Record<string, { value: number; expected_sign: number; verdict: string }>;
+  sign_audit?: Record<
+    string,
+    {
+      value: number;
+      expected_sign: number;
+      /** "agrees" | "DISAGREES" | "indeterminate" — see below. */
+      verdict: string;
+      is_lineup?: boolean;
+      standard_error?: number | null;
+      z?: number;
+      ci95?: [number, number];
+    }
+  >;
   n_shots?: number;
   seasons?: number[];
 };
