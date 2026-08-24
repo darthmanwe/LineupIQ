@@ -255,17 +255,29 @@ jobs:
   # invariant that matters -- only `reportable` may carry a point estimate.
   no-unsupported-numbers:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/ml
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
       - run: uv sync --extra dev
+        working-directory: services/ml
       - run: uv run pytest tests/test_support.py -q
+        working-directory: services/ml
+
+      # The invariant itself, swept rather than sampled: every lineup in the
+      # parity fixture whose tier is `refused` or `directional`, through every
+      # live scoring route. The suite also fails if a live POST route appears
+      # that the sweep does not know how to gate -- adding a scoring route
+      # without gating it is the natural mistake, and it raises nothing.
+      - run: npm ci
+      - run: npm --workspace apps/api run test -- no-unsupported-numbers
       - name: Assert the pre-registered thresholds hash is unchanged
+        working-directory: services/ml
         run: |
           uv run python -c "
           from lineupiq.models.support import thresholds_hash
