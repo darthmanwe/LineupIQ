@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from lineupiq.retrieval.docs import LineupDoc
 from lineupiq.transform.zones import ZONE_IDS
@@ -50,6 +51,16 @@ __all__ = [
 _RELATIVE_TOLERANCE = 0.02
 
 _NUMBER = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)(%?)")
+
+#: Candidate person names: two or more capitalised tokens, where a token may
+#: carry an internal hyphen, apostrophe or period.
+_NAME = re.compile(r"\b[A-Z][A-Za-z'.\-]*(?:\s+[A-Z][A-Za-z'.\-]*)+")
+
+
+def _normalise_name(value: str) -> str:
+    """Letters only, casefolded. Punctuation is not identity."""
+    return "".join(character for character in value.lower() if character.isalpha())
+
 
 #: Unit phrases whose numbers are denominators, not claims.
 #:
@@ -191,15 +202,27 @@ def check_narrative(text: str, doc: LineupDoc) -> GroundednessResult:
 
     # --- player scope --------------------------------------------------------
     # Catches the model recalling a plausible team-mate who was not on the floor.
-    on_floor = {name.lower() for name in doc.player_names}
-    surnames = {name.split()[-1].lower() for name in doc.player_names if name.split()}
-    for candidate in re.findall(r"\b[A-Z][a-z]+(?: [A-Z][a-z]+)+\b", text):
-        lowered_candidate = candidate.lower()
-        if lowered_candidate in on_floor:
+    #
+    # Names carry punctuation, and a naive `[A-Z][a-z]+` extractor breaks on all
+    # of it. Running this for the first time produced 36 false positives out of
+    # 200 faithful narratives -- every one a real player the pattern could not
+    # parse: Caldwell-Pope, Gilgeous-Alexander, Hardaway Jr. A checker that
+    # flags correct prose is worse than no checker, because the noise buries the
+    # real failures.
+    #
+    # So candidates are extracted *with* internal punctuation and both sides are
+    # normalised to letters only. "kentaviouscaldwell" then matches
+    # "kentaviouscaldwellpope" by containment, which is the right answer: the
+    # narrative named someone who is on the floor, just not by his full surname.
+    on_floor = [_normalise_name(name) for name in doc.player_names]
+    for candidate in _NAME.findall(text):
+        normalised = _normalise_name(candidate)
+        # Too short to be a name; "The Group" and similar would match anything.
+        if len(normalised) < 8:
             continue
-        if lowered_candidate.split()[-1] in surnames:
+        if any(normalised in name or name in normalised for name in on_floor):
             continue
-        result.add("player_scope", f"'{candidate}' was not in this lineup")
+        result.add("player_scope", f"'{candidate.strip()}' was not in this lineup")
 
     # --- tier consistency ----------------------------------------------------
     # The hard one. A narrative about a below-floor lineup that asserts a point
@@ -234,7 +257,7 @@ def check_narrative(text: str, doc: LineupDoc) -> GroundednessResult:
     return result
 
 
-def score_corpus(narratives: dict[str, str], docs: dict[str, LineupDoc]) -> dict[str, object]:
+def score_corpus(narratives: dict[str, str], docs: dict[str, LineupDoc]) -> dict[str, Any]:
     """Score every narrative, and run both negative controls.
 
     ``easy`` re-scores each narrative against a *different* lineup's evidence.

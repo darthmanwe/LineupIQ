@@ -521,6 +521,26 @@ narratives are re-scored against another lineup's evidence (easy) and against th
 lineup with one player swapped (near-miss). The near-miss number is the honest one, because
 almost every figure is still nearly right.
 
+<!-- lineupiq:begin id=results.groundedness -->
+200 lineup documents, 100 of them below the
+reporting floor. Narratives are **templated, not generated** — no language model has
+been called by this repository.
+
+| Narrative | n | Grounded | Numeric traceability | Easy control | Near-miss control |
+|---|---|---|---|---|---|
+| `faithful` — every number traceable, tier respected | 200 | **100.0%** | 100.0% | 0.5% | 0.5% |
+| `overclaiming` — **only correct numbers**, asserts a point estimate | 200 | **50.0%** | 100.0% | 0.5% | 0.0% |
+| `hallucinating` — names a player who was not on the floor | 200 | **1.5%** | 100.0% | 0.0% | 0.5% |
+
+**Read the second row.** Numeric traceability is 100% — every figure in every one of those narratives appears in the evidence. And 50% of them are grounded, because 100 assert a point estimate for a lineup below the reporting floor. The numbers are right and the sentences are wrong.
+
+That is the whole case for semantic checks. A groundedness harness reporting only traceability would score this row at 100% and publish it as a pass. The sibling project measured the same thing from the other direction: its regex traced 1,027 of 1,027 tokens, raised no flags, and scored Cohen's kappa 0.00 against human labels — a detector with no positives cannot agree beyond chance.
+
+**Both controls collapse**, which is what makes the first row mean something: a checker that accepts everything also scores 100%. Re-scored against another lineup's evidence the faithful narratives drop to 0.5%; against the same lineup with one player swapped, 0.5%.
+
+The `faithful` row also cost two bug fixes to reach 100%. The checker first flagged the "100" in "points per 100 possessions" as an ungrounded number, and its name extractor could not parse Caldwell-Pope, Gilgeous-Alexander or Hardaway Jr. — 36 false positives on correct prose. A checker that flags correct prose is worse than no checker, because the noise buries the real failures.
+<!-- lineupiq:end id=results.groundedness -->
+
 **What is not built:** live narrative generation. The writer/judge pair, the committed
 content-addressed cache, and human-labelled judge agreement are outstanding, and
 `/api/eval/judge` returns `501` naming them. The checker and its controls run today against

@@ -652,6 +652,75 @@ def _retrieval(ctx: RenderContext) -> str:
     return "\n".join(lines)
 
 
+def _groundedness(ctx: RenderContext) -> str:
+    """What arithmetic can and cannot check, measured."""
+    run = _read_json(ctx.paths.runs / "groundedness" / "run.json")
+    if run is None:
+        return "\n_Not yet run. Run `lineupiq groundedness`._\n"
+
+    by_template = run.get("by_template", {})
+    labels = {
+        "faithful": "`faithful` — every number traceable, tier respected",
+        "overclaiming": "`overclaiming` — **only correct numbers**, asserts a point estimate",
+        "hallucinating": "`hallucinating` — names a player who was not on the floor",
+    }
+    lines = [
+        "",
+        f"{int(run['n_documents'])} lineup documents, {int(run['n_below_floor'])} of them below the",
+        "reporting floor. Narratives are **templated, not generated** — no language model has",
+        "been called by this repository.",
+        "",
+        "| Narrative | n | Grounded | Numeric traceability | Easy control | Near-miss control |",
+        "|---|---|---|---|---|---|",
+    ]
+    for template in ("faithful", "overclaiming", "hallucinating"):
+        row = by_template.get(template)
+        if not row:
+            continue
+        lines.append(
+            f"| {labels.get(template, template)} | {int(row['n'])} | "
+            f"**{row['grounded_rate']:.1%}** | {row['mean_traceability']:.1%} | "
+            f"{row['control_easy_grounded_rate']:.1%} | "
+            f"{row['control_near_miss_grounded_rate']:.1%} |"
+        )
+
+    overclaiming = by_template.get("overclaiming", {})
+    faithful = by_template.get("faithful", {})
+    if overclaiming and faithful:
+        tier_failures = int(
+            (overclaiming.get("failures_by_check") or {}).get("tier_consistency", 0)
+        )
+        lines += [
+            "",
+            "**Read the second row.** Numeric traceability is "
+            f"{overclaiming['mean_traceability']:.0%} — every figure in every one of those "
+            "narratives appears in the evidence. And "
+            f"{overclaiming['grounded_rate']:.0%} of them are grounded, because "
+            f"{tier_failures} assert a point estimate for a lineup below the reporting floor. "
+            "The numbers are right and the sentences are wrong.",
+            "",
+            "That is the whole case for semantic checks. A groundedness harness reporting only "
+            "traceability would score this row at 100% and publish it as a pass. The sibling "
+            "project measured the same thing from the other direction: its regex traced "
+            "1,027 of 1,027 tokens, raised no flags, and scored Cohen's kappa 0.00 against "
+            "human labels — a detector with no positives cannot agree beyond chance.",
+            "",
+            "**Both controls collapse**, which is what makes the first row mean something: a "
+            "checker that accepts everything also scores 100%. Re-scored against another "
+            "lineup's evidence the faithful narratives drop to "
+            f"{faithful['control_easy_grounded_rate']:.1%}; against the same lineup with one "
+            f"player swapped, {faithful['control_near_miss_grounded_rate']:.1%}.",
+            "",
+            "The `faithful` row also cost two bug fixes to reach 100%. The checker first "
+            'flagged the "100" in "points per 100 possessions" as an ungrounded number, '
+            "and its name extractor could not parse Caldwell-Pope, Gilgeous-Alexander or "
+            "Hardaway Jr. — 36 false positives on correct prose. A checker that flags correct "
+            "prose is worse than no checker, because the noise buries the real failures.",
+            "",
+        ]
+    return "\n".join(lines)
+
+
 RENDERERS = {
     "results.estimability": _estimability,
     "results.model": _model_results,
@@ -659,6 +728,7 @@ RENDERERS = {
     "results.rapm": _rapm,
     "results.trade": _trade,
     "results.retrieval": _retrieval,
+    "results.groundedness": _groundedness,
     "results.dataquality": _data_quality,
     "results.possessions": _possessions,
 }

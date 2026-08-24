@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 import sys
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import polars as pl
 import typer
@@ -1100,6 +1100,112 @@ def retrieval_ablation(
     text = json.dumps(summarise(report), indent=2, sort_keys=True)
     (directory / "ablation.json").write_text(f"{text}\n", encoding="utf-8", newline="\n")
     console.print(f"\nrun log written to [cyan]{directory / 'ablation.json'}[/]")
+
+
+@app.command()
+def groundedness() -> None:
+    """Score templated narratives against their evidence. Offline, no model call.
+
+    The narratives are templated, not generated -- no language model has been
+    called by this repository. What is being measured is the *checker*, which is
+    the part that would still be needed once a model is writing, and whose limits
+    are the interesting finding either way.
+    """
+    import json
+
+    from lineupiq.io.gold import load_all_gold
+    from lineupiq.llm.groundedness import CHECKS, check_narrative, score_corpus
+    from lineupiq.llm.narratives import TEMPLATES, build_corpus
+    from lineupiq.retrieval.docs import build_documents
+
+    paths = DataPaths.discover()
+    docs = build_documents(
+        load_all_gold(paths, "shot_facts"),
+        load_all_gold(paths, "possession_facts"),
+        load_all_gold(paths, "dim_player"),
+    )
+    if not docs:
+        console.print("[yellow]No documents. Run `lineupiq build` first.[/]")
+        raise typer.Exit(code=2)
+
+    # Both ends of the support distribution. Taking only the best-evidenced
+    # groups would let the tier-consistency check pass trivially, because the
+    # overclaiming template is only *wrong* below the reporting floor.
+    sample = docs[:100] + docs[-100:]
+    by_doc = {doc.doc_id: doc for doc in sample}
+    below = sum(1 for doc in sample if doc.below_reporting_floor)
+    corpus = build_corpus(sample, limit=len(sample))
+
+    console.print(
+        f"[dim]{len(sample)} documents ({below} below the reporting floor), "
+        f"{len(TEMPLATES)} templates[/]"
+    )
+
+    table = Table(title="Groundedness by template", header_style="bold")
+    table.add_column("Template")
+    table.add_column("n", justify="right")
+    table.add_column("Grounded", justify="right")
+    table.add_column("Traceability", justify="right")
+    table.add_column("Easy control", justify="right")
+    table.add_column("Near-miss control", justify="right")
+
+    payload: dict[str, Any] = {"n_documents": len(sample), "n_below_floor": below}
+    scores: dict[str, dict[str, Any]] = {}
+    for template in TEMPLATES:
+        result = score_corpus(corpus[template], by_doc)
+        scores[template] = result
+        table.add_row(
+            template,
+            f"{int(result['n'])}",
+            f"{float(result['grounded_rate']):.1%}",
+            f"{float(result['mean_traceability']):.1%}",
+            f"{float(result['control_easy_grounded_rate']):.1%}",
+            f"{float(result['control_near_miss_grounded_rate']):.1%}",
+        )
+    console.print(table)
+    payload["by_template"] = scores
+
+    failures = Table(title="Which check caught what", header_style="bold")
+    failures.add_column("Template")
+    failures.add_column("Check")
+    failures.add_column("Narratives flagged", justify="right")
+    for template in TEMPLATES:
+        counts = scores[template].get("failures_by_check", {})
+        if not isinstance(counts, dict) or not counts:
+            failures.add_row(template, "[dim]none[/]", "0")
+            continue
+        for check, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+            failures.add_row(template, check, f"{count}")
+    console.print(failures)
+
+    detail = dict(CHECKS)
+    overclaiming = scores["overclaiming"].get("failures_by_check", {})
+    if isinstance(overclaiming, dict) and "tier_consistency" in overclaiming:
+        console.print(
+            f"[bold]The finding:[/] the overclaiming template quotes only correct numbers -- "
+            f"its traceability is "
+            f"{float(scores['overclaiming']['mean_traceability']):.1%} -- and "
+            f"{overclaiming['tier_consistency']} narratives still fail, on "
+            f"[cyan]tier_consistency[/]: {detail['tier_consistency']} "
+            "Arithmetic settles provenance and cannot settle meaning."
+        )
+
+    directory = paths.runs / "groundedness"
+    directory.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    (directory / "run.json").write_text(text + "\n", encoding="utf-8", newline="\n")
+    console.print(f"\nrun log written to [cyan]{directory / 'run.json'}[/]")
+
+    example = next((d for d in sample if d.below_reporting_floor), sample[0])
+    console.print(f"\n[dim]Example -- {example.doc_id}, {example.possessions} possessions:[/]")
+    for template in TEMPLATES:
+        checked = check_narrative(corpus[template][example.doc_id], example)
+        verdict = (
+            "[green]grounded[/]"
+            if checked.grounded
+            else "[red]" + ", ".join(checked.failures) + "[/]"
+        )
+        console.print(f"  {template:14s} {verdict}")
 
 
 report_app = typer.Typer(help="Generate documentation blocks from run logs.")

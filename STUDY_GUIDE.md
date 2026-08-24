@@ -551,9 +551,24 @@ Two negative controls, because a checker that accepts everything also scores 1.0
 against another lineup's evidence (easy), and against the same lineup with one player swapped
 (near-miss). The near-miss is the honest number.
 
-Writing the tests found two bugs in it: it flagged the "100" in "points per 100 possessions"
-as an ungrounded number, which would fail every correct narrative, and its name extractor
-could not see the fixture's own names.
+**Measured, over 200 lineup documents and three narrative templates:**
+
+| Narrative                             | Grounded   | Numeric traceability | Easy control | Near-miss control |
+| ------------------------------------- | ---------- | -------------------- | ------------ | ----------------- |
+| faithful                              | **100.0%** | 100.0%               | 0.5%         | 0.5%              |
+| overclaiming — _only correct numbers_ | **50.0%**  | 100.0%               | 0.5%         | 0.0%              |
+| hallucinating                         | **1.5%**   | 100.0%               | 0.0%         | 0.5%              |
+
+Read the second row. Traceability is **100%** — every figure appears in the evidence — and
+half the narratives are still wrong, because 100 of them assert a point estimate for a lineup
+below the reporting floor. A harness reporting only traceability would score that row at 100%
+and publish it as a pass.
+
+Getting the first row to 100% cost two bug fixes, both found by running it: the checker
+flagged the "100" in "points per 100 possessions" as an ungrounded number, which would fail
+every correct narrative; and its name extractor could not parse Caldwell-Pope,
+Gilgeous-Alexander or Hardaway Jr. — 36 false positives on correct prose. A checker that flags
+correct prose is worse than no checker, because the noise buries the real failures.
 
 ---
 
@@ -680,6 +695,7 @@ Keep this list. It is the most credible part of the story.
 | `nan` silently became `0.0`                           | Variance decomposition read "0%"          | Reported a decomposition never computed                |
 | Placebo sign agreement read 0.0%                      | `sign(0)` matches neither ±1              | A meaningless statistic on the arm that matters        |
 | Exported JSON contained bare `NaN`                    | Worker test could not parse its fixture   | **Invalid JSON — a 500 in production**                 |
+| Name extractor could not parse hyphenated names       | 36 false positives on faithful narratives | A checker flagging correct prose buries real failures  |
 | Groundedness flagged "per 100" as ungrounded          | Writing the test                          | Would fail every correct narrative                     |
 | Parity fixture had zero `reportable` cases            | The generator's own warning               | A branch never exercised cannot be proved to agree     |
 | First ablation conflated model class with lineup info | Reading the ladder                        | Reported a model-class effect as a lineup effect       |
@@ -923,9 +939,10 @@ Then `apps/api/test/parity.test.ts`:
 | 13  | `services/ml/src/lineupiq/transform/zone_geometry.py` | Court geometry, generated from the model's own constants                   |
 | 14  | `apps/web/src/components/court/CourtHeatmap.tsx`      | Diverging fill, hatch below the floor, every zone labels its n             |
 | 15  | `services/ml/src/lineupiq/runtime.py`                 | The memory cap, and the ctypes handle bug                                  |
-| 16  | `services/ml/src/lineupiq/report/render.py`           | Why numbers are generated, never typed                                     |
-| 17  | `docs/modeling.md`                                    | Every correction, with its magnitude                                       |
-| 18  | `.github/workflows/ci.yml`                            | 11 jobs, all offline and free                                              |
+| 16  | `services/ml/tests/test_support.py`                   | The pinned threshold hash — the pre-registration, enforced                 |
+| 17  | `services/ml/src/lineupiq/report/render.py`           | Why numbers are generated, never typed                                     |
+| 18  | `docs/modeling.md`                                    | Every correction, with its magnitude                                       |
+| 19  | `.github/workflows/ci.yml`                            | 13 jobs, all offline and free                                              |
 
 **Quick commands to run live:**
 

@@ -222,6 +222,62 @@ jobs:
         run: |
           git diff --exit-code -- services/ml/runs/retrieval/ablation.json             || (echo "::error::The retrieval ablation moved. Re-render the README and commit." && exit 1)
 
+  # The groundedness checker and both its negative controls, offline and free.
+  #
+  # The assertion is not "the rate is high" -- it is that the three narrative
+  # templates SEPARATE. Faithful must reach 100%, overclaiming must fail on
+  # tier_consistency despite perfect numeric traceability, and both controls
+  # must collapse. A checker that accepts everything also scores 100%, so the
+  # controls are what make the first number mean anything.
+  groundedness:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run lineupiq groundedness
+      - name: Assert the published groundedness run is unchanged
+        working-directory: .
+        run: |
+          git diff --exit-code -- services/ml/runs/groundedness/run.json             || (echo "::error::The groundedness run moved. Re-render the README and commit." && exit 1)
+
+  # The refusal contract's floors were fixed before any lineup-level result
+  # existed, and the README says so. This is where that claim is enforced: the
+  # thresholds file's hash is pinned in a test, so loosening a floor to make a
+  # demo look better fails the build rather than passing quietly.
+  #
+  # `pytest -k support` also walks every tier boundary and asserts the single
+  # invariant that matters -- only `reportable` may carry a point estimate.
+  no-unsupported-numbers:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run pytest tests/test_support.py -q
+      - name: Assert the pre-registered thresholds hash is unchanged
+        run: |
+          uv run python -c "
+          from lineupiq.models.support import thresholds_hash
+          from pathlib import Path
+          import re
+          pinned = re.search(r'PRE_REGISTERED_SHA256 = \"([0-9a-f]{64})\"', Path('tests/test_support.py').read_text(encoding='utf-8'))
+          assert pinned, 'the pinned hash is gone from the test'
+          actual = thresholds_hash()
+          assert actual == pinned.group(1), f'thresholds changed: {actual}'
+          print('thresholds unchanged:', actual)
+          "
+
   # Every exported artefact must be valid JSON. Python's json.dumps emits bare
   # NaN and Infinity by default, which are Python literals and not JSON: no
   # browser and no Worker can parse them, so one slipping through is a 500 in
@@ -259,9 +315,4 @@ jobs:
 #                              take tens of minutes on a full refit, so this
 #                              needs to be a scheduled job rather than a
 #                              per-push one.
-#   M4  no-unsupported-numbers walk low-support fixtures through every scoring
-#                              route; assert 422 or a null point estimate, and
-#                              that the pre-registered threshold hash is intact
-#   M6  groundedness           re-score committed narratives against evidence
-#                              rebuilt from gold, with no key and no network
 # ---------------------------------------------------------------------------
