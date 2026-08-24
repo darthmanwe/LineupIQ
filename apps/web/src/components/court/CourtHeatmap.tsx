@@ -39,12 +39,79 @@ export type ZoneShape = {
   labelAt: { x: number; y: number };
 };
 
+function formatSigned(value: number, digits = 3): string {
+  return `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(digits)}`;
+}
+
 export type ZoneValue = {
   attempts: number;
   fg: number;
   points_per_attempt: number;
   deviation: number;
   below_floor: boolean;
+};
+
+/**
+ * What the colours mean.
+ *
+ * The court is a diverging encoding of *some* signed quantity, and it was
+ * originally hard-wired to one: expected points per attempt. Serving the
+ * selection model needs a second — the share of a shooter's attempts a lineup
+ * moves into each zone — and those are not interchangeable. They differ in
+ * units, in the size of an interesting effect (0.2 points versus 0.003 of a
+ * share), and in what the sample-size floor is counting.
+ *
+ * Rather than let the component keep saying "points per attempt" over a chart
+ * of something else, the vocabulary is a parameter. Everything a reader sees —
+ * the in-zone number, the hover sentence, the table headers, the floor
+ * explanation — comes from here.
+ */
+export type MetricSpec = {
+  /** Fills "N vs league" and the table's value column. */
+  valueLabel: string;
+  /** The unit being counted for the support floor, singular. */
+  countNoun: string;
+  /** In-zone label and table cell. Deliberately short: it sits on the court. */
+  formatDeviation: (deviation: number) => string;
+  /** The precise value, for the hover readout and the table. */
+  formatValue: (value: ZoneValue) => string;
+  /** One clause naming the secondary quantity, or null to omit it. */
+  formatSecondary: (value: ZoneValue) => string | null;
+  /** Header and cell for the table's secondary column, which must stay narrow. */
+  secondaryLabel: string;
+  formatSecondaryCell: (value: ZoneValue) => string;
+  /** Header for the count column. */
+  countLabel: string;
+};
+
+/** Expected points per attempt, the original and still the default. */
+export const POINTS_PER_ATTEMPT: MetricSpec = {
+  valueLabel: "Exp. pts/attempt",
+  countNoun: "attempt",
+  formatDeviation: (d) => formatSigned(d, 2),
+  formatValue: (v) => v.points_per_attempt.toFixed(3),
+  formatSecondary: (v) => `${(v.fg * 100).toFixed(1)}% on ${v.attempts.toLocaleString()} attempts`,
+  secondaryLabel: "FG%",
+  formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(1)}%`,
+  countLabel: "Attempts",
+};
+
+/**
+ * Share of a shooter's attempts, as the selection model predicts it.
+ *
+ * Three decimals of a percentage point, because that is the real size of the
+ * effect. Rounding it to one decimal would show ±0.0 everywhere and rescaling
+ * it would be a lie about magnitude.
+ */
+export const ATTEMPT_SHARE: MetricSpec = {
+  valueLabel: "Share",
+  countNoun: "possession",
+  formatDeviation: (d) => `${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(2)}`,
+  formatValue: (v) => `${(v.points_per_attempt * 100).toFixed(2)}%`,
+  formatSecondary: (v) => `${(v.fg * 100).toFixed(2)}% with a league-average lineup on the floor`,
+  secondaryLabel: "Baseline",
+  formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(2)}%`,
+  countLabel: "Possessions",
 };
 
 export type CourtHeatmapProps = {
@@ -58,6 +125,8 @@ export type CourtHeatmapProps = {
   /** Largest absolute deviation the scale should reach. Shared across courts so
    *  two charts side by side are comparable rather than each self-normalised. */
   domain?: number;
+  /** What the numbers mean. Defaults to expected points per attempt. */
+  metric?: MetricSpec;
 };
 
 /**
@@ -88,10 +157,6 @@ function step(
   return { arm: deviation > 0 ? "above" : "below", index };
 }
 
-function formatSigned(value: number, digits = 3): string {
-  return `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(digits)}`;
-}
-
 export function CourtHeatmap({
   viewBox,
   shapes,
@@ -100,6 +165,7 @@ export function CourtHeatmap({
   minZoneAttempts,
   caption,
   domain,
+  metric = POINTS_PER_ATTEMPT,
 }: CourtHeatmapProps) {
   const patternId = useId();
   const [hovered, setHovered] = useState<string | null>(null);
@@ -213,8 +279,8 @@ export function CourtHeatmap({
               tabIndex={0}
               aria-label={
                 unsupported
-                  ? `${shape.label}: below the ${minZoneAttempts}-attempt floor, no estimate`
-                  : `${shape.label}: ${formatSigned(value.deviation)} points per attempt versus league, ${value.attempts} attempts`
+                  ? `${shape.label}: below the ${minZoneAttempts}-${metric.countNoun} floor, no estimate`
+                  : `${shape.label}: ${formatSigned(value.deviation)} versus league, ${value.attempts} ${metric.countNoun}s`
               }
             />
           );
@@ -234,7 +300,7 @@ export function CourtHeatmap({
           return (
             <g key={`${shape.id}-label`}>
               <text className="court__label" x={shape.labelAt.x} y={shape.labelAt.y}>
-                {unsupported ? "—" : formatSigned(value.deviation, 2)}
+                {unsupported ? "—" : metric.formatDeviation(value.deviation)}
               </text>
               <text className="court__sub" x={shape.labelAt.x} y={shape.labelAt.y + 15}>
                 n={value ? value.attempts.toLocaleString() : 0}
@@ -268,7 +334,7 @@ export function CourtHeatmap({
           <svg width="22" height="12" aria-hidden>
             <rect width="22" height="12" fill={`url(#${patternId}-hatch)`} />
           </svg>
-          below the {minZoneAttempts}-attempt floor — no estimate
+          below the {minZoneAttempts}-{metric.countNoun} floor — no estimate
         </span>
         <button
           type="button"
@@ -284,16 +350,15 @@ export function CourtHeatmap({
         {active && activeShape ? (
           active.below_floor ? (
             <>
-              <strong>{activeShape.label}</strong> — {active.attempts.toLocaleString()} attempts,
-              below the {minZoneAttempts}-attempt floor. No estimate is shown, and that is the
-              answer rather than a missing value.
+              <strong>{activeShape.label}</strong> — {active.attempts.toLocaleString()}{" "}
+              {metric.countNoun}s, below the {minZoneAttempts}-{metric.countNoun} floor. No estimate
+              is shown, and that is the answer rather than a missing value.
             </>
           ) : (
             <>
-              <strong>{activeShape.label}</strong> — {active.points_per_attempt.toFixed(3)} expected
-              points per attempt ({formatSigned(active.deviation)} vs league{" "}
-              {leagueValue.toFixed(3)}), {(active.fg * 100).toFixed(1)}% on{" "}
-              {active.attempts.toLocaleString()} attempts.
+              <strong>{activeShape.label}</strong> — {metric.formatValue(active)} (
+              {formatSigned(active.deviation)} vs league {leagueValue.toFixed(3)})
+              {metric.formatSecondary(active) ? `, ${metric.formatSecondary(active)}` : ""}.
             </>
           )
         ) : (
@@ -309,9 +374,9 @@ export function CourtHeatmap({
           <thead>
             <tr>
               <th scope="col">Zone</th>
-              <th scope="col">Attempts</th>
-              <th scope="col">FG%</th>
-              <th scope="col">Exp. pts/attempt</th>
+              <th scope="col">{metric.countLabel}</th>
+              <th scope="col">{metric.secondaryLabel}</th>
+              <th scope="col">{metric.valueLabel}</th>
               <th scope="col">vs league</th>
             </tr>
           </thead>
@@ -322,9 +387,9 @@ export function CourtHeatmap({
                 <tr key={`${shape.id}-row`}>
                   <th scope="row">{shape.label}</th>
                   <td className="num">{value ? value.attempts.toLocaleString() : "0"}</td>
-                  <td className="num">{value ? `${(value.fg * 100).toFixed(1)}%` : "—"}</td>
+                  <td className="num">{value ? (metric.formatSecondary(value) ?? "—") : "—"}</td>
                   <td className="num">
-                    {value && !value.below_floor ? value.points_per_attempt.toFixed(3) : "—"}
+                    {value && !value.below_floor ? metric.formatValue(value) : "—"}
                   </td>
                   <td className="num">
                     {value && !value.below_floor ? formatSigned(value.deviation) : "no estimate"}

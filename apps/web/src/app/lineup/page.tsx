@@ -1,8 +1,10 @@
 "use client";
 
+import playersData from "../../../public/data/players.json";
 import zonesData from "../../../public/data/zones.json";
 import surfaceData from "../../../public/data/zone_surface.json";
 import { CourtHeatmap, type ZoneShape, type ZoneValue } from "@/components/court/CourtHeatmap";
+import { LineupScorer } from "@/components/LineupScorer";
 
 /**
  * The Lineup page.
@@ -10,12 +12,15 @@ import { CourtHeatmap, type ZoneShape, type ZoneValue } from "@/components/court
  * What is live: the shot-value surface, at league scale and for two real
  * shooters, drawn on geometry generated from the same constants as the model.
  *
- * What is not: picking five players and getting a surface for *them*. That needs
- * the served scorer, and this page says so rather than implying the colours are
- * lineup-specific. The two example courts are here to show what the refusal
- * rendering looks like against real data — at league scale no zone is ever
- * within three orders of magnitude of the attempt floor, so a hatch that never
- * fires would be decoration.
+ * Then the counterfactual: pick any five, pick who is shooting, and the served
+ * conditional logit returns how that lineup moves his shot mix. The two are
+ * different quantities and the page keeps them apart — the surface is about how
+ * valuable a zone is, the scorer is about which zone a player ends up in.
+ *
+ * The two example courts below show what the refusal rendering looks like
+ * against real data. At league scale no zone is ever within three orders of
+ * magnitude of the attempt floor, so a hatch that never fires would be
+ * decoration.
  */
 
 type Surface = {
@@ -29,6 +34,22 @@ type Surface = {
 };
 
 const zones = zonesData as { viewBox: string; zones: ZoneShape[]; count: number };
+
+/**
+ * The pickable players, highest volume first.
+ *
+ * Capped at 240. Every id in `players.json` is a real player, but the tail is
+ * two-minute call-ups whose fitted mix is almost entirely prior — putting them
+ * at the top of a dropdown would invite a confident-looking answer about
+ * somebody the model barely saw. The selector still shows each player's attempt
+ * count, so the thinness is visible rather than implied.
+ */
+const PICKABLE = Object.entries(
+  (playersData as { players: Record<string, { name: string; attempts: number }> }).players
+)
+  .map(([id, p]) => ({ id: Number(id), name: p.name, attempts: p.attempts }))
+  .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name))
+  .slice(0, 240);
 const surface = surfaceData as unknown as Surface;
 
 /** One domain across every court, so two charts side by side are comparable. */
@@ -130,13 +151,29 @@ export default function LineupPage() {
         </div>
       )}
 
+      <h2 style={{ fontSize: "1.3rem", marginTop: "3rem" }}>Score a five-man lineup</h2>
+      <p className="lede">
+        Not &ldquo;does this lineup make him shoot better&rdquo; — that model was built first and
+        the answer was <strong>+0.019%</strong> log loss on unseen combinations, which is nothing.
+        This is the question that has an answer: does the lineup change{" "}
+        <em>which shots he takes</em>. Any five of {PICKABLE.length} players, including combinations
+        that have never played a possession together.
+      </p>
+      <LineupScorer players={PICKABLE} shapes={zones.zones} viewBox={zones.viewBox} />
+
       <div className="note">
-        <strong>Not built: the per-lineup surface.</strong> Picking five players and getting a
-        surface for <em>them</em> needs the served closed-form scorer, and{" "}
-        <code>POST /api/lineups/score</code> returns <code>501</code> naming what will back it. What
-        is live is <code>POST /api/lineups/support</code>, which answers the prior question —
-        whether these five have enough evidence for anything to be said at all. For 99% of five-man
-        groups the answer is no.
+        <strong>Why the numbers are small.</strong> A team&rsquo;s attempts live on a simplex, so a
+        lineup that moves a shooter toward threes has to move him away from something else — the
+        deltas sum to zero by construction, and the court shows them at their real size. The fitted
+        lineup effect is fractions of a percentage point. It is a real, measurable effect that
+        survives a shuffled-lineup control, and it is small; both halves of that are the result.
+      </div>
+
+      <div className="note">
+        <strong>What is still not built.</strong> The optimizer — search over lineups rather than
+        scoring one you chose — and the trade simulator&rsquo;s served deltas.{" "}
+        <code>POST /api/lineups/optimal-plays</code> and <code>POST /api/trades/simulate</code>{" "}
+        return <code>501</code> naming what will back them.
       </div>
     </main>
   );
