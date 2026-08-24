@@ -150,3 +150,28 @@ def test_fusion_is_immune_to_last_place_noise() -> None:
     fused = reciprocal_rank_fusion([lexical, dense])
     nudged = reciprocal_rank_fusion([lexical + jitter, dense - jitter])
     assert np.allclose(fused, nudged, rtol=0, atol=1e-12)
+
+
+def test_co_occurrence_report_is_order_independent(paths: DataPaths) -> None:
+    """The RAPM diagnostic that was publishing an arbitrary fifty rows.
+
+    `max_co_occurrence` is exactly 1.0 for every player who never took the floor
+    without a particular teammate, so the top of the non-identified list is a
+    solid block of ties. An unstable sort over those ties, plus an `argmax` over
+    ratios that differ in the last place between platforms, meant the published
+    list depended on the machine.
+    """
+    from lineupiq.models.rapm import build_rapm_design, co_occurrence_report, usable_possessions
+
+    possessions = usable_possessions(load_all_gold(paths, "possession_facts"))
+
+    reports = [
+        co_occurrence_report(build_rapm_design(variant)) for variant in _permutations(possessions)
+    ]
+    keys = [
+        [(row["player_id"], row["partner_id"]) for row in report["non_identified"]]
+        for report in reports
+    ]
+    assert keys[0] == keys[1] == keys[2]
+    # And the flagged count itself, which feeds the README.
+    assert len({report["n_flagged"] for report in reports}) == 1
