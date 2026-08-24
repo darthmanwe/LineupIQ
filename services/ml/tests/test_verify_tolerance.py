@@ -7,8 +7,10 @@ binned one the tight bound and it fails on bin-edge noise from a different BLAS.
 Both mistakes were made. The first version of `BINNED_METRICS` was a set of exact
 names, which held the selection model's nineteen per-zone-group variants
 (`three_ece`, `rim_resolution`, `classwise_ece`) to 1e-6 and failed the gate on
-nothing. It also included `skill_score`, which is `1 - brier/uncertainty` — a
-smooth function of the predictions that had no business getting a loose bound.
+nothing. Then I removed `skill_score` from it, citing `1 - brier/uncertainty` — a formula
+this code does not use. It is actually `(resolution - reliability) / uncertainty`,
+so two of its three inputs are binned and it inherits every bin-edge
+discontinuity they have. Ten of them moved by up to 4.5e-5 on the next CI run.
 
 So the classification is asserted here, in both directions, by name.
 """
@@ -33,6 +35,10 @@ from lineupiq.models.train import BINNED_TOLERANCE, TOLERANCE, tolerance_for
         "resolution",
         "rim_resolution",
         "three_resolution",
+        # Derived from two binned quantities, so binned itself. Removing this
+        # broke the gate; see the module docstring.
+        "skill_score",
+        "three_skill_score",
     ],
 )
 def test_binned_estimators_get_the_loose_tolerance(metric: str) -> None:
@@ -50,7 +56,6 @@ def test_binned_estimators_get_the_loose_tolerance(metric: str) -> None:
         "rim_brier",
         "three_brier",
         "uncertainty",
-        "skill_score",
         "calibration_slope",
         "calibration_intercept",
         "top1_accuracy",

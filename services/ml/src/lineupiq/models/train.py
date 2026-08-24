@@ -59,26 +59,43 @@ BINNED_TOLERANCE = 1e-3
 
 #: The binned quantities, named by what they are rather than by where they appear.
 #:
-#: The first version of this was a set of exact metric names, and it was wrong
-#: twice over. The selection model reports the same three estimators once per zone
-#: group -- `three_ece`, `rim_resolution`, `classwise_ece` -- and an exact-match
-#: set silently held all nineteen of those to 1e-6, which failed the gate on
-#: nothing but bin-edge noise. Enumerating names means re-enumerating them every
-#: time a metric appears under a new prefix.
-#:
-#: So the rule comes from the estimator instead: a metric is binned if any
-#: underscore-separated part of its name is one of these. `skill_score` was in the
-#: original list and should not have been -- it is `1 - brier/uncertainty`, a
-#: smooth function of the predictions, and giving it a loose tolerance weakened
-#: the gate for no reason. `log_loss`, `brier`, `uncertainty`,
-#: `calibration_slope` and `top1_accuracy` all keep 1e-6, which is what makes the
-#: gate mean anything: those have no excuse to move.
+#: The first version of this was a set of exact metric names, and an exact-match
+#: set silently held the selection model's nineteen per-zone-group variants --
+#: `three_ece`, `rim_resolution`, `classwise_ece` -- to 1e-6, failing the gate on
+#: nothing but bin-edge noise. Matching on any underscore-separated part of the
+#: name means a metric added tomorrow under a new prefix classifies itself.
 BINNED_METRICS = frozenset({"ece", "reliability", "resolution"})
+
+#: Metrics *derived from* binned quantities, and therefore binned themselves.
+#:
+#: `skill_score` is `(resolution - reliability) / uncertainty`. Two of its three
+#: inputs are binned, so it inherits every bin-edge discontinuity they have.
+#:
+#: I removed it from the loose bound on the reasoning that it is
+#: `1 - brier / uncertainty` and therefore smooth. **That is a formula this code
+#: does not use.** Ten of them moved by up to 4.5e-5 on the next CI run -- the
+#: bin-edge signature exactly -- and the gate failed on noise it had been
+#: correctly tolerating before I "tightened" it.
+#:
+#: The lesson is narrower and more useful than the one I thought I was applying:
+#: deriving a rule from the definition only works if you *read* the definition.
+#: I recalled it instead, and recalled a different estimator's.
+#:
+#: Matched as a suffix so a prefixed variant is covered too.
+DERIVED_FROM_BINNED = frozenset({"skill_score"})
 
 
 def tolerance_for(metric: str) -> float:
-    """The drift a metric is allowed. See :data:`BINNED_METRICS`."""
-    return BINNED_TOLERANCE if set(metric.split("_")) & BINNED_METRICS else TOLERANCE
+    """The drift a metric is allowed.
+
+    See :data:`BINNED_METRICS` for the binned estimators and
+    :data:`DERIVED_FROM_BINNED` for the ones computed from them.
+    """
+    if set(metric.split("_")) & BINNED_METRICS:
+        return BINNED_TOLERANCE
+    if any(metric.endswith(name) for name in DERIVED_FROM_BINNED):
+        return BINNED_TOLERANCE
+    return TOLERANCE
 
 
 def _git_sha() -> str:

@@ -920,6 +920,39 @@ The generalisable lesson, and it applies well beyond this file: **enumerating in
 rule you have to maintain; deriving from the definition is a rule that maintains itself.** I
 reached for the enumeration first because it was faster, and paid for it twice.
 
+### Comparing a float artefact like a float artefact
+
+Once the ordering bugs were fixed, three gates kept failing on differences of order 1e-15, and
+none of those were bugs. `git diff --exit-code` is the right gate for a file of MD5 digests,
+canonical id strings and tier labels — exact quantities where one differing bit is a defect. It
+is the wrong gate for a run log full of correlations, ridge solutions, standard errors and
+softmax outputs, because **none of those are bit-portable**: the same source with the same
+library versions differs in the last place between Linux and Windows, since the BLAS and libm
+underneath do.
+
+A byte-identity gate on such a file gets it exactly backwards — _it fails on a platform change
+and passes on a rounding coincidence._
+
+So `lineupiq.validate.reproduce.compare_artefacts` walks two decoded artefacts with structure
+exact and floats to a stated bound, and each caller names its own tolerance so the choice is
+visible where it is made:
+
+| Artefact                     | Tolerance | Why                                                 |
+| ---------------------------- | --------- | --------------------------------------------------- |
+| `data/parity/lineups.json`   | 0         | MD5 digests, integers, tier labels — exact          |
+| `data/parity/selection.json` | 1e-9      | softmax outputs; also what the vitest suite asserts |
+| `runs/rapm/run.json`         | 1e-12     | correlations and ridge solutions; smaller noise     |
+
+Structure stays exact in all three. A missing key, a changed tier, a player who appeared in or
+vanished from the non-identified list, a `null` replacing a standard error — those are
+differences at any tolerance, and the tests for the comparator are mostly about proving it
+still catches them. A comparator that is too permissive turns every reproducibility check in
+the repository into a formality **and would never say so**, because everything would simply
+keep passing.
+
+I reached the same conclusion three separate times before writing it down once. That is the
+part worth remembering.
+
 **The follow-on problem, and `refit.yml`.** If this machine intermittently corrupts memory,
 every number it computed is suspect — including the committed baselines that `--verify`
 compares against. A gate calibrated to a fault is worse than no gate. So `refit.yml`
