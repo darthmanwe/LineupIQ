@@ -20,6 +20,7 @@ from a clean clone with no network and no account.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,28 @@ _PRECISION = 10
 
 def _round(value: object) -> float:
     return round(as_float(value), _PRECISION)
+
+
+def _json_safe(value: Any) -> Any:
+    """Replace every non-finite float with null, recursively.
+
+    ``json.dumps`` emits bare ``NaN`` and ``Infinity`` by default. Those are
+    Python literals, **not JSON** -- no browser and no Worker can parse them, so
+    an export containing one is a 500 in production and a suite that cannot even
+    import its fixtures in test.
+
+    A run log legitimately contains NaN: a placebo's sign agreement is undefined,
+    and a fit without covariance has no standard error. `null` is what that means
+    in JSON, and the writer below passes ``allow_nan=False`` so a future NaN
+    fails loudly here instead of shipping.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 @dataclass(frozen=True)
@@ -63,7 +86,9 @@ def _write(directory: Path, name: str, payload: Any) -> int:
     path = directory / name
     # Separators without spaces, and sorted keys so the bytes are stable and a
     # diff shows a data change rather than a serialisation change.
-    text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    # `allow_nan=False` is the guard: if `_json_safe` ever misses a non-finite
+    # value, this raises instead of writing a file nothing can parse.
+    text = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":"), allow_nan=False)
     path.write_text(text, encoding="utf-8", newline="\n")
     return len(text.encode("utf-8"))
 
@@ -198,6 +223,58 @@ def export_selection_model(paths: DataPaths) -> dict[str, Any]:
     }
 
 
+def export_evaluation(paths: DataPaths) -> dict[str, Any]:
+    """Published evaluation results, so /api/eval/* serves measurements.
+
+    Read from the run logs rather than recomputed. An endpoint that recomputed
+    its own metrics would be reporting a different number than the README, which
+    is the exact failure the report generator exists to prevent.
+    """
+    from lineupiq.models.train import latest_run
+
+    out: dict[str, Any] = {}
+
+    conversion = latest_run(paths)
+    if conversion:
+        out["conversion"] = {
+            "git_sha": conversion.get("git_sha"),
+            "n_shots": conversion.get("n_shots"),
+            "metrics": conversion.get("metrics", {}),
+            "controls": conversion.get("controls", {}),
+        }
+
+    selection = latest_run(paths, kind="selection")
+    if selection:
+        out["selection"] = {
+            "git_sha": selection.get("git_sha"),
+            "n_shots": selection.get("n_shots"),
+            "metrics": selection.get("metrics", {}),
+            "controls": selection.get("controls", {}),
+            "sign_audit": selection.get("model", {}).get("sign_audit", {}),
+        }
+
+    for name, relative in (
+        ("rapm", "rapm/run.json"),
+        ("retrieval", "retrieval/ablation.json"),
+    ):
+        path = paths.runs / relative
+        if path.exists():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            # The lambda trace is a hundred rows of grid search and nothing a
+            # client needs; it stays in the committed run log.
+            payload.pop("lambda_trace", None)
+            out[name] = payload
+
+    trade_directory = paths.runs / "trade"
+    if trade_directory.exists():
+        out["trade"] = {
+            path.stem: json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(trade_directory.glob("*.json"))
+        }
+
+    return {"available": sorted(out), **out}
+
+
 def export_snapshot(paths: DataPaths) -> dict[str, Any]:
     """Which committed build is being served.
 
@@ -236,5 +313,6 @@ def export_all(paths: DataPaths, directory: Path | None = None) -> ExportManifes
             target, "selection_model.json", export_selection_model(paths)
         ),
         "snapshot.json": _write(target, "snapshot.json", export_snapshot(paths)),
+        "evaluation.json": _write(target, "evaluation.json", export_evaluation(paths)),
     }
     return ExportManifest(files=files)

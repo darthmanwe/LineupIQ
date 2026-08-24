@@ -1012,6 +1012,96 @@ def snowflake_check() -> None:
     console.print("[green]Snowflake DDL matches every committed contract.[/]")
 
 
+retrieval_app = typer.Typer(help="Document construction and retrieval evaluation.")
+app.add_typer(retrieval_app, name="retrieval")
+
+
+@retrieval_app.command("ablation")
+def retrieval_ablation(
+    memory_cap_gb: float = typer.Option(
+        DEFAULT_MEMORY_CAP_GB, help="Hard ceiling on process memory. 0 disables the cap."
+    ),
+    allow_uncapped: bool = typer.Option(
+        False, "--allow-uncapped", help="Proceed even if the memory cap cannot be applied."
+    ),
+) -> None:
+    """Compare three corpora on the same queries with the same retrievers.
+
+    The design document asserts that document design drives retrieval quality.
+    This measures it: the same facts rendered as an event log, as bare decimals,
+    and as the full template with names, archetypes and comparatives.
+    """
+    _guard_memory(memory_cap_gb, allow_uncapped=allow_uncapped)
+
+    import json
+
+    from lineupiq.io.gold import load_all_gold
+    from lineupiq.retrieval.docs import build_documents
+    from lineupiq.retrieval.evaluate import run_ablation, summarise
+
+    paths = DataPaths.discover()
+    docs = build_documents(
+        load_all_gold(paths, "shot_facts"),
+        load_all_gold(paths, "possession_facts"),
+        load_all_gold(paths, "dim_player"),
+    )
+    console.print(f"[dim]{len(docs):,} documents at (lineup, team, season) grain[/]")
+    if not docs:
+        console.print("[yellow]No documents. Run `lineupiq build` first.[/]")
+        raise typer.Exit(code=2)
+
+    report = run_ablation(docs)
+    console.print(f"[dim]{report.n_queries} generated queries[/]")
+
+    table = Table(title="Corpus ablation -- Recall@10 / MRR / nDCG@10", header_style="bold")
+    table.add_column("Corpus")
+    for name in ("bm25", "lsa", "rrf"):
+        table.add_column(name, justify="right")
+    for variant, scores in report.by_corpus.items():
+        table.add_row(
+            variant,
+            *[
+                f"{scores[name]['recall']:.3f} / {scores[name]['mrr']:.3f} / "
+                f"{scores[name]['ndcg']:.3f}"
+                for name in ("bm25", "lsa", "rrf")
+            ],
+        )
+    console.print(table)
+
+    if report.by_kind:
+        kinds = Table(title="Recall@10 by query kind, full corpus", header_style="bold")
+        kinds.add_column("Query kind")
+        for name in ("bm25", "lsa", "rrf"):
+            kinds.add_column(name, justify="right")
+        for kind, by_retriever in sorted(report.by_kind.items()):
+            kinds.add_row(
+                kind,
+                *[f"{by_retriever.get(name, 0.0):.3f}" for name in ("bm25", "lsa", "rrf")],
+            )
+        console.print(kinds)
+
+    full = report.by_corpus.get("full", {})
+    if full:
+        best = max(("bm25", "lsa", "rrf"), key=lambda n: full[n]["recall"])
+        console.print(f"\n[bold]Best retriever on the full corpus:[/] {best}")
+        if best == "bm25":
+            console.print(
+                "[yellow]BM25 alone beats the hybrid.[/] Reported because it is the result: "
+                "the corpus is built from a closed vocabulary and named entities, which is "
+                "exactly what lexical matching is good at. A dense leg earns its place only "
+                "when queries are phrased in words the documents do not contain."
+            )
+
+    for note in report.notes:
+        console.print(f"[dim]note: {note}[/]")
+
+    directory = paths.runs / "retrieval"
+    directory.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(summarise(report), indent=2, sort_keys=True)
+    (directory / "ablation.json").write_text(f"{text}\n", encoding="utf-8", newline="\n")
+    console.print(f"\nrun log written to [cyan]{directory / 'ablation.json'}[/]")
+
+
 report_app = typer.Typer(help="Generate documentation blocks from run logs.")
 app.add_typer(report_app, name="report")
 

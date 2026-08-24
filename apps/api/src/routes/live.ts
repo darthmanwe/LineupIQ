@@ -9,6 +9,7 @@
 import type { Context, Hono } from "hono";
 
 import {
+  loadEvaluation,
   loadPlayers,
   loadSelectionModel,
   loadSnapshot,
@@ -257,6 +258,72 @@ export function mountLive(app: App): void {
             : [],
         })
       );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * Published evaluation results.
+   *
+   * `?section=` narrows it; without one the whole set comes back, because the
+   * point of this endpoint is that a reader can see every measurement including
+   * the unflattering ones.
+   */
+  app.get("/eval/model", async (c) => {
+    try {
+      const evaluation = await loadEvaluation(c.env);
+      const section = c.req.query("section");
+      if (section && !(section in evaluation)) {
+        return problem(c, {
+          status: 404,
+          code: "NO_SUCH_SECTION",
+          title: "No such evaluation section",
+          detail: `Known sections: ${evaluation.available.join(", ")}.`,
+          extensions: { available: evaluation.available },
+        });
+      }
+      const body = section ? { [section]: evaluation[section] } : evaluation;
+
+      const trade = evaluation.trade as
+        Record<string, { power?: { verdict?: string } }> | undefined;
+      const underpowered = trade
+        ? Object.values(trade).some((run) => run.power?.verdict === "UNDERPOWERED")
+        : false;
+
+      return c.json(
+        envelope(c, body, {
+          snapshot: c.env.SNAPSHOT ?? null,
+          // Surfaced, not buried. The trade backtest's own verdict is that no
+          // accuracy claim is supported at this sample size, and a client
+          // reading these numbers needs to know that before it reads them.
+          warnings: underpowered
+            ? [
+                "The trade backtest is UNDERPOWERED: its minimum detectable effect is the " +
+                  "same size as the effects it projects. No accuracy claim follows from " +
+                  "those numbers.",
+              ]
+            : [],
+        })
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  app.get("/eval/retrieval", async (c) => {
+    try {
+      const evaluation = await loadEvaluation(c.env);
+      const retrieval = evaluation.retrieval;
+      if (!retrieval) {
+        return problem(c, {
+          status: 503,
+          code: "EVALUATION_NOT_DEPLOYED",
+          title: "Retrieval evaluation is not deployed",
+          detail: "Run `lineupiq retrieval ablation` and `lineupiq export`, then redeploy.",
+        });
+      }
+      return c.json(envelope(c, retrieval, { snapshot: c.env.SNAPSHOT ?? null }));
     } catch (error) {
       return assetMissing(c, error);
     }

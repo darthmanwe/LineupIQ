@@ -1,0 +1,87 @@
+{
+  "by_corpus": {
+    "events": {
+      "bm25": {
+        "mrr": 0.4172681716848234,
+        "n": 45.0,
+        "ndcg": 0.39517967182631797,
+        "recall": 0.39777777777777773
+      },
+      "lsa": {
+        "mrr": 0.3839348383514901,
+        "n": 45.0,
+        "ndcg": 0.3611035285086151,
+        "recall": 0.3819753086419753
+      },
+      "rrf": {
+        "mrr": 0.4172681716848234,
+        "n": 45.0,
+        "ndcg": 0.3930913481715332,
+        "recall": 0.39777777777777773
+      }
+    },
+    "full": {
+      "bm25": {
+        "mrr": 1.0,
+        "n": 45.0,
+        "ndcg": 0.9808533016835641,
+        "recall": 0.9733333333333333
+      },
+      "lsa": {
+        "mrr": 0.8643019943019943,
+        "n": 45.0,
+        "ndcg": 0.7991395199516006,
+        "recall": 0.802716049382716
+      },
+      "rrf": {
+        "mrr": 0.9388888888888889,
+        "n": 45.0,
+        "ndcg": 0.9448398239297325,
+        "recall": 0.9877777777777776
+      }
+    },
+    "numbers": {
+      "bm25": {
+        "mrr": 0.09002999388007063,
+        "n": 45.0,
+        "ndcg": 0.061846338492984626,
+        "recall": 0.06444444444444444
+      },
+      "lsa": {
+        "mrr": 0.26513341873131396,
+        "n": 45.0,
+        "ndcg": 0.11887390941438297,
+        "recall": 0.10666666666666669
+      },
+      "rrf": {
+        "mrr": 0.1387236437688238,
+        "n": 45.0,
+        "ndcg": 0.068370839271001,
+        "recall": 0.06888888888888889
+      }
+    }
+  },
+  "by_kind": {
+    "composite": {
+      "bm25": 0.9666666666666667,
+      "lsa": 0.8466666666666666,
+      "rrf": 0.9800000000000001
+    },
+    "players": {
+      "bm25": 1.0,
+      "lsa": 0.9148148148148149,
+      "rrf": 1.0
+    },
+    "style": {
+      "bm25": 0.9533333333333334,
+      "lsa": 0.6466666666666666,
+      "rrf": 0.9833333333333333
+    }
+  },
+  "n_documents": 2410,
+  "n_queries": 45,
+  "notes": [
+    "Relevance judgements are derived programmatically from document attributes, not hand-graded. They measure whether a retriever finds documents stating facts the query names -- a weaker claim than semantic relevance. Hand-graded queries remain outstanding.",
+    "The dense leg is TF-IDF plus truncated SVD (LSA), not a neural embedding model. It runs offline from a clean clone, which is why it is used here; the deployed retriever would use Workers AI at 384 dimensions and would need its own measurement."
+  ]
+}

@@ -111,6 +111,21 @@ export const loadSnapshot = (env: Bindings): Promise<SnapshotData> =>
 export const loadSelectionModel = (env: Bindings): Promise<SelectionModelData> =>
   read<SelectionModelData>(env, "selection_model.json");
 
+/**
+ * Published evaluation results, read from the run logs rather than recomputed.
+ *
+ * An endpoint that recomputed its own metrics would eventually report a
+ * different number than the README, which is exactly the drift the report
+ * generator exists to prevent.
+ */
+export type EvaluationData = {
+  available: string[];
+  [section: string]: unknown;
+};
+
+export const loadEvaluation = (env: Bindings): Promise<EvaluationData> =>
+  read<EvaluationData>(env, "evaluation.json");
+
 /** Exposed for tests, which need a clean isolate between cases. */
 export function clearAssetCache(): void {
   cache.clear();

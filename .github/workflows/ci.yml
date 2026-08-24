@@ -198,6 +198,57 @@ jobs:
             || (echo "::error::Regenerating the parity fixture changed it. Commit the new one." && exit 1)
       - run: npm ci
       - run: npm --workspace apps/api run test
+
+  # The retrieval ablation and the groundedness controls, both offline and free.
+  #
+  # `retrieval ablation` is the job that turns the design document's assertion
+  # about document design into a number. The groundedness controls are checked by
+  # the unit suite rather than here, because a checker that accepts everything
+  # scores 1.00 and only the near-miss control can tell the difference.
+  retrieval-eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run lineupiq retrieval ablation
+      - name: Assert the published ablation is unchanged
+        working-directory: .
+        run: |
+          git diff --exit-code -- services/ml/runs/retrieval/ablation.json             || (echo "::error::The retrieval ablation moved. Re-render the README and commit." && exit 1)
+
+  # Every exported artefact must be valid JSON. Python's json.dumps emits bare
+  # NaN and Infinity by default, which are Python literals and not JSON: no
+  # browser and no Worker can parse them, so one slipping through is a 500 in
+  # production. This has already caught one.
+  export-is-valid-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Parse every exported file with a JSON parser that rejects NaN
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const dir = 'apps/web/public/data';
+            for (const name of fs.readdirSync(dir)) {
+              if (!name.endsWith('.json')) continue;
+              const raw = fs.readFileSync(\`\${dir}/\${name}\`, 'utf8');
+              try { JSON.parse(raw); } catch (e) {
+                console.error(\`::error::\${name} is not valid JSON: \${e.message}\`);
+                process.exit(1);
+              }
+            }
+            console.log('every exported file parses');
+          "
+
 # ---------------------------------------------------------------------------
 # Jobs that land with the milestone that makes them meaningful. They are listed
 # here rather than added as always-green stubs, because a job that passes

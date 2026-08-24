@@ -1,0 +1,274 @@
+/**
+ * The live routes, against the real exported assets.
+ *
+ * The assets binding is stubbed with the committed JSON rather than a fixture,
+ * so these tests fail if `lineupiq export` produces something the Worker cannot
+ * read. That is the coupling worth testing: the export and the reader are in
+ * different languages and different repositories' worth of tooling.
+ *
+ * The refusal cases matter most. A 200 carrying a confident number for a lineup
+ * with no evidence is the one failure this project is built to prevent, and it
+ * would not raise anywhere -- it would just be wrong.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import evaluationJson from "../../web/public/data/evaluation.json";
+import playersJson from "../../web/public/data/players.json";
+import selectionJson from "../../web/public/data/selection_model.json";
+import snapshotJson from "../../web/public/data/snapshot.json";
+import supportJson from "../../web/public/data/support.json";
+import zonesJson from "../../web/public/data/zones.json";
+import worker from "../src/index";
+import { clearAssetCache } from "../src/data/store";
+
+const ASSETS: Record<string, unknown> = {
+  "support.json": supportJson,
+  "players.json": playersJson,
+  "zones.json": zonesJson,
+  "snapshot.json": snapshotJson,
+  "selection_model.json": selectionJson,
+  "evaluation.json": evaluationJson,
+};
+
+const env = {
+  ENVIRONMENT: "test",
+  SNAPSHOT: "test-snapshot",
+  ASSETS: {
+    fetch: (request: Request): Promise<Response> => {
+      const name = new URL(request.url).pathname.replace("/data/", "");
+      const payload = ASSETS[name];
+      if (payload === undefined) {
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+      return Promise.resolve(Response.json(payload));
+    },
+  } as unknown as Fetcher,
+};
+
+async function get(path: string): Promise<Response> {
+  clearAssetCache();
+  return worker.fetch(new Request(`https://test.local${path}`), env);
+}
+
+async function post(path: string, body: unknown): Promise<Response> {
+  clearAssetCache();
+  return worker.fetch(
+    new Request(`https://test.local${path}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    }),
+    env
+  );
+}
+
+/** Five players certain to have real evidence: the highest-volume ones. */
+function highVolumePlayers(count: number): number[] {
+  const players = playersJson as unknown as {
+    players: Record<string, { attempts: number }>;
+  };
+  return Object.entries(players.players)
+    .sort((a, b) => b[1].attempts - a[1].attempts)
+    .slice(0, count)
+    .map(([id]) => Number(id));
+}
+
+describe("live metadata routes", () => {
+  it("serves the declared seasons", async () => {
+    const response = await get("/api/seasons");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { data: { seasons: unknown[] } };
+    expect(body.data.seasons).toHaveLength(3);
+  });
+
+  it("serves the zone vocabulary the model actually uses", async () => {
+    const response = await get("/api/zones");
+    const body = (await response.json()) as {
+      data: { zones: Array<{ id: string }>; count: number };
+    };
+    expect(response.status).toBe(200);
+    expect(body.data.count).toBe(9);
+    // The taxonomy is exported from Python, not restated here. If these ids
+    // ever drift, the court heatmap and the model disagree about "corner three".
+    expect(body.data.zones.map((z) => z.id)).toContain("corner_three_left");
+  });
+
+  it("serves the snapshot fingerprints", async () => {
+    const response = await get("/api/meta/snapshot");
+    const body = (await response.json()) as {
+      data: { n_contracts: number; thresholds_sha256: string };
+    };
+    expect(body.data.n_contracts).toBeGreaterThan(10);
+    expect(body.data.thresholds_sha256).toHaveLength(64);
+  });
+
+  it("serves players with their evidence attached", async () => {
+    const response = await get("/api/players?limit=5");
+    const body = (await response.json()) as {
+      data: { players: Array<{ player_id: string; attempts: number }>; total: number };
+    };
+    expect(body.data.players).toHaveLength(5);
+    expect(body.data.total).toBeGreaterThan(400);
+    for (const player of body.data.players) {
+      expect(player.attempts).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("filters players by name", async () => {
+    const response = await get("/api/players?q=jokic");
+    const body = (await response.json()) as { data: { players: Array<{ name: string }> } };
+    expect(body.data.players.length).toBeGreaterThan(0);
+    for (const player of body.data.players) {
+      expect(player.name.toLowerCase()).toContain("jokic");
+    }
+  });
+});
+
+describe("the refusal contract", () => {
+  it("refuses a lineup of players with no evidence, with a 422", async () => {
+    // Ids that are not in the snapshot at all.
+    const response = await post("/api/lineups/support", {
+      players: [900000001, 900000002, 900000003, 900000004, 900000005],
+    });
+    expect(response.status).toBe(422);
+    expect(response.headers.get("Content-Type")).toContain("application/problem+json");
+
+    const body = (await response.json()) as {
+      code: string;
+      what_would_help: string;
+      n_possessions: number;
+      threshold: number;
+    };
+    expect(body.code).toBe("INSUFFICIENT_SUPPORT");
+    expect(body.n_possessions).toBe(0);
+    expect(body.threshold).toBeGreaterThan(0);
+    // "Not enough data" without "of what" is not an answer.
+    expect(body.what_would_help.length).toBeGreaterThan(20);
+  });
+
+  it("answers a counterfactual lineup of known players directionally", async () => {
+    // Five real, high-volume players who have never all shared a floor: the
+    // player terms have support, the combination does not. A 200 with a null
+    // centre is the correct answer, and a refusal would be wrong.
+    const response = await post("/api/lineups/support", { players: highVolumePlayers(5) });
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      data: { estimate_permitted: boolean; what_would_help: string | null };
+      meta: { support: { tier: string; counterfactual: boolean } };
+    };
+    expect(["directional", "reportable"]).toContain(body.meta.support.tier);
+    if (body.meta.support.tier === "directional") {
+      expect(body.data.estimate_permitted).toBe(false);
+      expect(body.data.what_would_help).toBeTruthy();
+    }
+  });
+
+  it("never returns a point estimate without the support to back it", async () => {
+    const response = await post("/api/lineups/support", { players: highVolumePlayers(5) });
+    const body = (await response.json()) as {
+      data: { estimate_permitted: boolean };
+      meta: {
+        support: { tier: string; lineup_possessions: number; thresholds: { possessions: number } };
+      };
+    };
+    // The one invariant: permission to report requires clearing the floor.
+    if (body.data.estimate_permitted) {
+      expect(body.meta.support.lineup_possessions).toBeGreaterThanOrEqual(
+        body.meta.support.thresholds.possessions
+      );
+    }
+  });
+
+  it("echoes the thresholds it applied so a caller can check the arithmetic", async () => {
+    const response = await post("/api/lineups/support", { players: highVolumePlayers(5) });
+    const body = (await response.json()) as {
+      meta: { support: { thresholds: { possessions: number; attempts: number } } };
+    };
+    expect(body.meta.support.thresholds.possessions).toBeGreaterThan(0);
+    expect(body.meta.support.thresholds.attempts).toBeGreaterThan(0);
+  });
+
+  it("rejects a malformed lineup rather than guessing", async () => {
+    for (const body of [{ players: [1, 2, 3] }, { players: [1, 1, 2, 3, 4] }, { nope: true }]) {
+      const response = await post("/api/lineups/support", body);
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { code: string }).code).toBe("INVALID_LINEUP");
+    }
+  });
+
+  it("rejects a body that is not JSON", async () => {
+    clearAssetCache();
+    const response = await worker.fetch(
+      new Request("https://test.local/api/lineups/support", { method: "POST", body: "{" }),
+      env
+    );
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { code: string }).code).toBe("MALFORMED_BODY");
+  });
+});
+
+describe("lineup hash endpoint", () => {
+  it("returns the numerically-sorted canonical form", async () => {
+    const response = await post("/api/lineups/hash", {
+      players: [1630552, 201143, 2544, 203999, 1629029],
+    });
+    const body = (await response.json()) as { data: { canonical: string; lineup_hash: string } };
+    expect(body.data.canonical).toBe("2544,201143,203999,1629029,1630552");
+    expect(body.data.lineup_hash).toBe("055603fd81221abc574796a1e5d3c08a");
+  });
+});
+
+describe("model and evaluation routes", () => {
+  it("surfaces a contradicted pre-registered sign as a warning", async () => {
+    const response = await get("/api/models/selection");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { term_names: string[]; coefficients: number[] };
+      meta: { warnings: string[] };
+    };
+    expect(body.data.term_names.length).toBe(body.data.coefficients.length);
+    // spacing_x_three contradicts its pre-registered sign, and that is the most
+    // interesting thing about this model rather than a footnote.
+    expect(body.meta.warnings.join(" ")).toContain("pre-registered");
+  });
+
+  it("warns that the trade backtest is underpowered before serving its numbers", async () => {
+    const response = await get("/api/eval/model");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { meta: { warnings: string[] } };
+    expect(body.meta.warnings.join(" ")).toContain("UNDERPOWERED");
+  });
+
+  it("404s an unknown evaluation section and lists the real ones", async () => {
+    const response = await get("/api/eval/model?section=whatever-looks-best");
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { code: string; available: string[] };
+    expect(body.code).toBe("NO_SUCH_SECTION");
+    expect(body.available.length).toBeGreaterThan(0);
+  });
+
+  it("serves the retrieval ablation", async () => {
+    const response = await get("/api/eval/retrieval");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { by_corpus: Record<string, Record<string, { recall: number }>> };
+    };
+    // The finding itself: bare decimals retrieve far worse than vocabulary.
+    expect(body.data.by_corpus.full.bm25.recall).toBeGreaterThan(
+      body.data.by_corpus.numbers.bm25.recall
+    );
+  });
+});
+
+describe("missing assets", () => {
+  it("503s rather than pretending, when the snapshot is not deployed", async () => {
+    clearAssetCache();
+    const response = await worker.fetch(new Request("https://test.local/api/zones"), {
+      ENVIRONMENT: "test",
+    });
+    expect(response.status).toBe(503);
+    expect(((await response.json()) as { code: string }).code).toBe("SNAPSHOT_NOT_DEPLOYED");
+  });
+});

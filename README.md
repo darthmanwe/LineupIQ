@@ -454,6 +454,77 @@ projection's variance, and the measurement says it does not. The player estimate
 larger term. The design's guess about where the uncertainty lived was wrong, and the
 decomposition is published rather than the guess.
 
+## Retrieval, and the document design that actually decides it
+
+The original design document contains its own best insight and then does not follow it: it
+warns that a stint is too short to carry stable statistical content, then proposes indexing
+per-stint documents. A stint is ninety seconds and four possessions; its embedding encodes
+noise.
+
+So documents sit at `(lineup_hash, team, season)` grain, above a possession floor, and carry
+four things on purpose — **names and role vocabulary** (a query for "stretch big" can only
+match if those words exist in the text), **comparatives rather than bare numbers**
+("top quintile" retrieves, `0.412` does not), **style tags from a closed vocabulary**, and
+**caveats travelling with the number**, so a narrative grounded on a below-floor lineup
+inherits the hedge instead of inventing confidence.
+
+Then it gets measured against the two obvious alternatives, on identical underlying facts.
+
+<!-- lineupiq:begin id=results.retrieval -->
+2,410 documents at `(lineup_hash, team, season)` grain, 45 queries.
+
+| Corpus | BM25 | LSA (dense) | RRF (hybrid) |
+|---|---|---|---|
+| `events` -- per-stint event log (the original design's proposal) | 0.398 / 0.417 / 0.395 | 0.382 / 0.384 / 0.361 | 0.398 / 0.417 / 0.393 |
+| `numbers` -- the same facts as bare decimals | 0.064 / 0.090 / 0.062 | 0.107 / 0.265 / 0.119 | 0.069 / 0.139 / 0.068 |
+| `full` -- names, archetypes, style tags, comparatives, caveats | 0.973 / 1.000 / 0.981 | 0.803 / 0.864 / 0.799 | 0.988 / 0.939 / 0.945 |
+
+_Each cell is Recall@10 / MRR / nDCG@10._
+
+**Document design moves Recall@10 from 0.064 to 0.973** on identical underlying facts -- a factor of 15. The original design document asserted that document design drives retrieval quality; this is that assertion measured. A corpus of bare decimals is close to unusable, because a query has words in it and a decimal has no words to match.
+
+**BM25 alone beats the hybrid on two of three metrics, and that is reported rather than buried.** On the full corpus BM25 reaches MRR 1.000 and nDCG@10 0.981 against the hybrid's 0.939 and 0.945; the hybrid wins only on Recall@10 (0.988 vs 0.973). Rank fusion pulls more relevant documents into the top ten and dilutes what sits at the top. That is the expected shape for a corpus built from a closed vocabulary and named entities, which is precisely what lexical matching is best at -- a dense leg earns its place when queries are phrased in words the documents do not contain, and these queries are not.
+
+| Query kind | BM25 | LSA | RRF |
+|---|---|---|---|
+| composite | 0.967 | 0.847 | 0.980 |
+| players | 1.000 | 0.915 | 1.000 |
+| style | 0.953 | 0.647 | 0.983 |
+
+_Recall@10 on the full corpus, by query kind._
+
+_Relevance judgements are derived programmatically from document attributes, not hand-graded. They measure whether a retriever finds documents stating facts the query names -- a weaker claim than semantic relevance. Hand-graded queries remain outstanding._
+
+_The dense leg is TF-IDF plus truncated SVD (LSA), not a neural embedding model. It runs offline from a clean clone, which is why it is used here; the deployed retriever would use Workers AI at 384 dimensions and would need its own measurement._
+<!-- lineupiq:end id=results.retrieval -->
+
+## Groundedness: what arithmetic can and cannot check
+
+The groundedness checker is deterministic, offline and free — no model runs, so its verdicts
+are reproducible and CI needs no key.
+
+Its **limit is the point**. Arithmetic settles provenance and cannot settle meaning. A
+checker can prove every number in a narrative appears in the evidence and be perfectly
+satisfied by a sentence quoting the right number for the wrong quantity. The sibling project
+measured exactly that: its regex traced 1,027 of 1,027 tokens, raised no flags, and scored
+Cohen's κ = 0.00 against human labels — not a broken checker, but a detector with no
+positives, which cannot agree beyond chance.
+
+So the checks split in two. **Numeric traceability** is cheap and nearly always satisfied.
+The four **semantic** checks are the ones that catch real errors: an invented zone, a player
+who was not on the floor, a **point estimate asserted for a lineup whose tier forbids one**
+(a hard failure — it is the product's central promise), and a direction stated backwards.
+
+Two negative controls, not one, because a checker that accepts everything also scores 1.00:
+narratives are re-scored against another lineup's evidence (easy) and against the same
+lineup with one player swapped (near-miss). The near-miss number is the honest one, because
+almost every figure is still nearly right.
+
+**What is not built:** live narrative generation. The writer/judge pair, the committed
+content-addressed cache, and human-labelled judge agreement are outstanding, and
+`/api/eval/judge` returns `501` naming them. The checker and its controls run today against
+templated narratives; a language model has never been called by this repository.
+
 ## Architecture
 
 ```

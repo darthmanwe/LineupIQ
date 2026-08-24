@@ -168,7 +168,7 @@ export const ROUTES: readonly RouteSpec[] = [
     method: "GET",
     path: "/eval/model",
     summary: "Calibration, Brier decomposition, and the full baseline ladder.",
-    state: "planned",
+    state: "live",
     willServe:
       "Every metric from the run log, including `beats_best_baseline` — which is " +
       "allowed to be false and is served either way.",
@@ -179,10 +179,7 @@ export const ROUTES: readonly RouteSpec[] = [
     method: "GET",
     path: "/eval/retrieval",
     summary: "Recall@10, MRR, nDCG per retriever, plus the template ablation.",
-    state: "planned",
-    willServe: "Retrieval quality per mode. If BM25 alone wins, it says so.",
-    milestone: M6,
-    backedBy: "services/ml/runs/retrieval/*.json",
+    state: "live",
   },
   {
     method: "GET",

@@ -575,12 +575,90 @@ def _trade(ctx: RenderContext) -> str:
     return "\n".join(lines)
 
 
+def _retrieval(ctx: RenderContext) -> str:
+    """The corpus ablation: does document design actually matter?"""
+    run = _read_json(ctx.paths.runs / "retrieval" / "ablation.json")
+    if run is None:
+        return "\n_Not yet run. Run `lineupiq retrieval ablation`._\n"
+
+    labels = {
+        "events": "`events` -- per-stint event log (the original design's proposal)",
+        "numbers": "`numbers` -- the same facts as bare decimals",
+        "full": "`full` -- names, archetypes, style tags, comparatives, caveats",
+    }
+    lines = [
+        "",
+        f"{int(run['n_documents']):,} documents at `(lineup_hash, team, season)` grain, "
+        f"{int(run['n_queries'])} queries.",
+        "",
+        "| Corpus | BM25 | LSA (dense) | RRF (hybrid) |",
+        "|---|---|---|---|",
+    ]
+    for variant in ("events", "numbers", "full"):
+        scores = run["by_corpus"].get(variant)
+        if not scores:
+            continue
+        cells = [
+            f"{scores[name]['recall']:.3f} / {scores[name]['mrr']:.3f} / {scores[name]['ndcg']:.3f}"
+            for name in ("bm25", "lsa", "rrf")
+        ]
+        lines.append(f"| {labels.get(variant, variant)} | " + " | ".join(cells) + " |")
+
+    lines += ["", "_Each cell is Recall@10 / MRR / nDCG@10._", ""]
+
+    numbers = run["by_corpus"].get("numbers", {}).get("bm25", {}).get("recall")
+    full = run["by_corpus"].get("full", {}).get("bm25", {}).get("recall")
+    if numbers and full:
+        lines += [
+            f"**Document design moves Recall@10 from {numbers:.3f} to {full:.3f}** on identical "
+            f"underlying facts -- a factor of {full / max(numbers, 1e-9):.0f}. The original "
+            "design document asserted that document design drives retrieval quality; this is "
+            "that assertion measured. A corpus of bare decimals is close to unusable, because "
+            "a query has words in it and a decimal has no words to match.",
+            "",
+        ]
+
+    full_scores = run["by_corpus"].get("full", {})
+    if full_scores:
+        bm25 = full_scores["bm25"]
+        rrf = full_scores["rrf"]
+        lines += [
+            "**BM25 alone beats the hybrid on two of three metrics, and that is reported "
+            "rather than buried.** On the full corpus BM25 reaches MRR "
+            f"{bm25['mrr']:.3f} and nDCG@10 {bm25['ndcg']:.3f} against the hybrid's "
+            f"{rrf['mrr']:.3f} and {rrf['ndcg']:.3f}; the hybrid wins only on Recall@10 "
+            f"({rrf['recall']:.3f} vs {bm25['recall']:.3f}). Rank fusion pulls more relevant "
+            "documents into the top ten and dilutes what sits at the top. That is the "
+            "expected shape for a corpus built from a closed vocabulary and named entities, "
+            "which is precisely what lexical matching is best at -- a dense leg earns its "
+            "place when queries are phrased in words the documents do not contain, and these "
+            "queries are not.",
+            "",
+        ]
+
+    by_kind = run.get("by_kind", {})
+    if by_kind:
+        lines += ["| Query kind | BM25 | LSA | RRF |", "|---|---|---|---|"]
+        for kind, scores in sorted(by_kind.items()):
+            lines.append(
+                f"| {kind} | "
+                + " | ".join(f"{scores.get(n, 0.0):.3f}" for n in ("bm25", "lsa", "rrf"))
+                + " |"
+            )
+        lines += ["", "_Recall@10 on the full corpus, by query kind._", ""]
+
+    for note in run.get("notes", []):
+        lines += [f"_{note}_", ""]
+    return "\n".join(lines)
+
+
 RENDERERS = {
     "results.estimability": _estimability,
     "results.model": _model_results,
     "results.selection": _selection_results,
     "results.rapm": _rapm,
     "results.trade": _trade,
+    "results.retrieval": _retrieval,
     "results.dataquality": _data_quality,
     "results.possessions": _possessions,
 }
