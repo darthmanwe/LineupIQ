@@ -192,10 +192,10 @@ jobs:
         working-directory: services/ml
       - run: uv run lineupiq parity
         working-directory: services/ml
-      - name: Assert the fixture and the export are unchanged
+      - name: Assert the fixtures and the export are unchanged
         run: |
-          git diff --exit-code -- data/parity/lineups.json apps/web/public/data/ \
-            || (echo "::error::Regenerating the parity fixture changed it. Commit the new one." && exit 1)
+          git diff --exit-code -- data/parity/ apps/web/public/data/ \
+            || (echo "::error::Regenerating a parity fixture changed it. Commit the new one." && exit 1)
       - run: npm ci
       - run: npm --workspace apps/api run test
 

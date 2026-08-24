@@ -1681,21 +1681,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "201572,203081,203507,1627752,1628398",
-      "counterfactual": false,
-      "lineup_hash": "76fcc35beff962c2c2b25c2ec157d401",
-      "min_player_attempts": 1537,
-      "players": [
-        201572,
-        203081,
-        203507,
-        1627752,
-        1628398
-      ],
-      "possessions": 553,
-      "tier": "reportable"
-    },
-    {
       "canonical": "203992,1629027,1630168,1630180,1630552",
       "counterfactual": false,
       "lineup_hash": "b4565ba78a3ba32cbe0d5c49a27c0e9a",
@@ -1706,6 +1691,21 @@
         1630168,
         1630180,
         1630552
+      ],
+      "possessions": 553,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "201572,203081,203507,1627752,1628398",
+      "counterfactual": false,
+      "lineup_hash": "76fcc35beff962c2c2b25c2ec157d401",
+      "min_player_attempts": 1537,
+      "players": [
+        201572,
+        203081,
+        203507,
+        1627752,
+        1628398
       ],
       "possessions": 553,
       "tier": "reportable"
@@ -4786,21 +4786,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "1627747,1627777,1629027,1630168,1630700",
-      "counterfactual": false,
-      "lineup_hash": "25a5043bcdc13a132f28bf707db97ec0",
-      "min_player_attempts": 1448,
-      "players": [
-        1627747,
-        1627777,
-        1629027,
-        1630168,
-        1630700
-      ],
-      "possessions": 266,
-      "tier": "reportable"
-    },
-    {
       "canonical": "1626167,1627783,1630169,1631097,1631245",
       "counterfactual": false,
       "lineup_hash": "f9fdb14a6d8edae87723a1a76a42f962",
@@ -4811,6 +4796,21 @@
         1630169,
         1631097,
         1631245
+      ],
+      "possessions": 266,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "1627747,1627777,1629027,1630168,1630700",
+      "counterfactual": false,
+      "lineup_hash": "25a5043bcdc13a132f28bf707db97ec0",
+      "min_player_attempts": 1448,
+      "players": [
+        1627747,
+        1627777,
+        1629027,
+        1630168,
+        1630700
       ],
       "possessions": 266,
       "tier": "reportable"
@@ -5206,21 +5206,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "203914,1628365,1628976,1630591,1631094",
-      "counterfactual": false,
-      "lineup_hash": "d6cf994e50afe689f690da48f45bda16",
-      "min_player_attempts": 773,
-      "players": [
-        203914,
-        1628365,
-        1628976,
-        1630591,
-        1631094
-      ],
-      "possessions": 250,
-      "tier": "reportable"
-    },
-    {
       "canonical": "203500,1628415,1629630,1630217,1630583",
       "counterfactual": false,
       "lineup_hash": "6a100775e7d0098e43776cb520004c4c",
@@ -5231,6 +5216,21 @@
         1629630,
         1630217,
         1630583
+      ],
+      "possessions": 250,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "203914,1628365,1628976,1630591,1631094",
+      "counterfactual": false,
+      "lineup_hash": "d6cf994e50afe689f690da48f45bda16",
+      "min_player_attempts": 773,
+      "players": [
+        203914,
+        1628365,
+        1628976,
+        1630591,
+        1631094
       ],
       "possessions": 250,
       "tier": "reportable"
@@ -5506,21 +5506,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "201142,203925,1626220,1628410,1629651",
-      "counterfactual": false,
-      "lineup_hash": "09f7495b83222b4220f797ddb90b23e9",
-      "min_player_attempts": 269,
-      "players": [
-        201142,
-        203925,
-        1626220,
-        1628410,
-        1629651
-      ],
-      "possessions": 244,
-      "tier": "reportable"
-    },
-    {
       "canonical": "201942,202696,203897,1628470,1629632",
       "counterfactual": false,
       "lineup_hash": "31c27503789de6cc0fe0b75b57fa9eb3",
@@ -5531,6 +5516,21 @@
         203897,
         1628470,
         1629632
+      ],
+      "possessions": 244,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "201142,203925,1626220,1628410,1629651",
+      "counterfactual": false,
+      "lineup_hash": "09f7495b83222b4220f797ddb90b23e9",
+      "min_player_attempts": 269,
+      "players": [
+        201142,
+        203925,
+        1626220,
+        1628410,
+        1629651
       ],
       "possessions": 244,
       "tier": "reportable"
@@ -6451,21 +6451,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "204060,1628371,1629021,1630175,1641710",
-      "counterfactual": false,
-      "lineup_hash": "016b4c2f7ad3d1a385ab153b7852125f",
-      "min_player_attempts": 533,
-      "players": [
-        204060,
-        1628371,
-        1629021,
-        1630175,
-        1641710
-      ],
-      "possessions": 219,
-      "tier": "reportable"
-    },
-    {
       "canonical": "201942,203897,1626168,1627734,1631165",
       "counterfactual": false,
       "lineup_hash": "85b3351681772982e41a682e52104c22",
@@ -6476,6 +6461,21 @@
         1626168,
         1627734,
         1631165
+      ],
+      "possessions": 219,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "204060,1628371,1629021,1630175,1641710",
+      "counterfactual": false,
+      "lineup_hash": "016b4c2f7ad3d1a385ab153b7852125f",
+      "min_player_attempts": 533,
+      "players": [
+        204060,
+        1628371,
+        1629021,
+        1630175,
+        1641710
       ],
       "possessions": 219,
       "tier": "reportable"
@@ -6541,21 +6541,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "202330,1626179,1628970,1630208,1641706",
-      "counterfactual": false,
-      "lineup_hash": "13172bd4aea85a16574f0ae3c0079f9f",
-      "min_player_attempts": 987,
-      "players": [
-        202330,
-        1626179,
-        1628970,
-        1630208,
-        1641706
-      ],
-      "possessions": 217,
-      "tier": "reportable"
-    },
-    {
       "canonical": "1627759,1628401,1628436,1630202,1630573",
       "counterfactual": false,
       "lineup_hash": "dc6d0baad0d9225c70fb6dc778234366",
@@ -6566,6 +6551,21 @@
         1628436,
         1630202,
         1630573
+      ],
+      "possessions": 217,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "202330,1626179,1628970,1630208,1641706",
+      "counterfactual": false,
+      "lineup_hash": "13172bd4aea85a16574f0ae3c0079f9f",
+      "min_player_attempts": 987,
+      "players": [
+        202330,
+        1626179,
+        1628970,
+        1630208,
+        1641706
       ],
       "possessions": 217,
       "tier": "reportable"
@@ -6961,21 +6961,6 @@
       "tier": "reportable"
     },
     {
-      "canonical": "203084,1627734,1628368,1630558,1631099",
-      "counterfactual": false,
-      "lineup_hash": "c0de2b60124875612e04c0ad02130ff5",
-      "min_player_attempts": 1285,
-      "players": [
-        203084,
-        1627734,
-        1628368,
-        1630558,
-        1631099
-      ],
-      "possessions": 208,
-      "tier": "reportable"
-    },
-    {
       "canonical": "1626157,1629638,1629675,1630162,1630183",
       "counterfactual": false,
       "lineup_hash": "10af5eb10e306165de72939ef0921342",
@@ -6986,6 +6971,21 @@
         1629675,
         1630162,
         1630183
+      ],
+      "possessions": 208,
+      "tier": "reportable"
+    },
+    {
+      "canonical": "203084,1627734,1628368,1630558,1631099",
+      "counterfactual": false,
+      "lineup_hash": "c0de2b60124875612e04c0ad02130ff5",
+      "min_player_attempts": 1285,
+      "players": [
+        203084,
+        1627734,
+        1628368,
+        1630558,
+        1631099
       ],
       "possessions": 208,
       "tier": "reportable"
@@ -7636,21 +7636,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "1627747,1628386,1629622,1629636,1630596",
-      "counterfactual": false,
-      "lineup_hash": "23883dbc24a9d82d0c3cf2fa86abf8ea",
-      "min_player_attempts": 2219,
-      "players": [
-        1627747,
-        1628386,
-        1629622,
-        1629636,
-        1630596
-      ],
-      "possessions": 197,
-      "tier": "directional"
-    },
-    {
       "canonical": "1628384,1628404,1628973,1629011,1630540",
       "counterfactual": false,
       "lineup_hash": "dd81cde3f9a7bbb11da9f230963e8bc6",
@@ -7661,6 +7646,21 @@
         1628973,
         1629011,
         1630540
+      ],
+      "possessions": 197,
+      "tier": "directional"
+    },
+    {
+      "canonical": "1627747,1628386,1629622,1629636,1630596",
+      "counterfactual": false,
+      "lineup_hash": "23883dbc24a9d82d0c3cf2fa86abf8ea",
+      "min_player_attempts": 2219,
+      "players": [
+        1627747,
+        1628386,
+        1629622,
+        1629636,
+        1630596
       ],
       "possessions": 197,
       "tier": "directional"
@@ -7756,21 +7756,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "2544,203076,203471,1626156,1630559",
-      "counterfactual": false,
-      "lineup_hash": "550a981c00d25186d26136c1b7778842",
-      "min_player_attempts": 2560,
-      "players": [
-        2544,
-        203076,
-        203471,
-        1626156,
-        1630559
-      ],
-      "possessions": 194,
-      "tier": "directional"
-    },
-    {
       "canonical": "201142,201569,1626164,1628960,1629234",
       "counterfactual": false,
       "lineup_hash": "80c29bd1154a9d62c11add36520ccdd2",
@@ -7781,6 +7766,21 @@
         1626164,
         1628960,
         1629234
+      ],
+      "possessions": 194,
+      "tier": "directional"
+    },
+    {
+      "canonical": "2544,203076,203471,1626156,1630559",
+      "counterfactual": false,
+      "lineup_hash": "550a981c00d25186d26136c1b7778842",
+      "min_player_attempts": 2560,
+      "players": [
+        2544,
+        203076,
+        203471,
+        1626156,
+        1630559
       ],
       "possessions": 194,
       "tier": "directional"
@@ -7801,21 +7801,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "202685,203468,1629627,1630230,1630530",
-      "counterfactual": false,
-      "lineup_hash": "e2a7984fff37eb02136fa9aae2e73121",
-      "min_player_attempts": 1678,
-      "players": [
-        202685,
-        203468,
-        1629627,
-        1630230,
-        1630530
-      ],
-      "possessions": 193,
-      "tier": "directional"
-    },
-    {
       "canonical": "204456,1627783,1630167,1631097,1641767",
       "counterfactual": false,
       "lineup_hash": "c18dd18a233db01d0d44f2017eff7e18",
@@ -7826,6 +7811,21 @@
         1630167,
         1631097,
         1641767
+      ],
+      "possessions": 193,
+      "tier": "directional"
+    },
+    {
+      "canonical": "202685,203468,1629627,1630230,1630530",
+      "counterfactual": false,
+      "lineup_hash": "e2a7984fff37eb02136fa9aae2e73121",
+      "min_player_attempts": 1678,
+      "players": [
+        202685,
+        203468,
+        1629627,
+        1630230,
+        1630530
       ],
       "possessions": 193,
       "tier": "directional"
@@ -7981,21 +7981,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "202331,202694,202704,1626181,1627826",
-      "counterfactual": false,
-      "lineup_hash": "a039776ef010ef5f4579c61055c40f82",
-      "min_player_attempts": 984,
-      "players": [
-        202331,
-        202694,
-        202704,
-        1626181,
-        1627826
-      ],
-      "possessions": 190,
-      "tier": "directional"
-    },
-    {
       "canonical": "201142,203078,203994,1626164,1626220",
       "counterfactual": false,
       "lineup_hash": "116bd6347ff8fe4bca5ca94d9e12cb7d",
@@ -8006,6 +7991,21 @@
         203994,
         1626164,
         1626220
+      ],
+      "possessions": 190,
+      "tier": "directional"
+    },
+    {
+      "canonical": "202331,202694,202704,1626181,1627826",
+      "counterfactual": false,
+      "lineup_hash": "a039776ef010ef5f4579c61055c40f82",
+      "min_player_attempts": 984,
+      "players": [
+        202331,
+        202694,
+        202704,
+        1626181,
+        1627826
       ],
       "possessions": 190,
       "tier": "directional"
@@ -8476,21 +8476,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "203500,1628415,1629630,1629723,1630583",
-      "counterfactual": false,
-      "lineup_hash": "592f7db86960e054b723e48334396fa9",
-      "min_player_attempts": 450,
-      "players": [
-        203500,
-        1628415,
-        1629630,
-        1629723,
-        1630583
-      ],
-      "possessions": 183,
-      "tier": "directional"
-    },
-    {
       "canonical": "201572,203081,203114,203507,1641748",
       "counterfactual": false,
       "lineup_hash": "ccceb157a60d3217c2aa20a7c021df6f",
@@ -8501,6 +8486,21 @@
         203114,
         203507,
         1641748
+      ],
+      "possessions": 183,
+      "tier": "directional"
+    },
+    {
+      "canonical": "203500,1628415,1629630,1629723,1630583",
+      "counterfactual": false,
+      "lineup_hash": "592f7db86960e054b723e48334396fa9",
+      "min_player_attempts": 450,
+      "players": [
+        203500,
+        1628415,
+        1629630,
+        1629723,
+        1630583
       ],
       "possessions": 183,
       "tier": "directional"
@@ -8731,21 +8731,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "203506,1628389,1628997,1629216,1629622",
-      "counterfactual": false,
-      "lineup_hash": "308cb788a75de25a2a6e238ed2e89dbe",
-      "min_player_attempts": 422,
-      "players": [
-        203506,
-        1628389,
-        1628997,
-        1629216,
-        1629622
-      ],
-      "possessions": 179,
-      "tier": "directional"
-    },
-    {
       "canonical": "1630224,1630231,1630256,1630578,1631095",
       "counterfactual": false,
       "lineup_hash": "959ef0f2a4a913f97a14472f39d777f5",
@@ -8756,6 +8741,21 @@
         1630256,
         1630578,
         1631095
+      ],
+      "possessions": 179,
+      "tier": "directional"
+    },
+    {
+      "canonical": "203506,1628389,1628997,1629216,1629622",
+      "counterfactual": false,
+      "lineup_hash": "308cb788a75de25a2a6e238ed2e89dbe",
+      "min_player_attempts": 422,
+      "players": [
+        203506,
+        1628389,
+        1628997,
+        1629216,
+        1629622
       ],
       "possessions": 179,
       "tier": "directional"
@@ -8866,21 +8866,6 @@
       "tier": "directional"
     },
     {
-      "canonical": "1627783,1629614,1630167,1630169,1630174",
-      "counterfactual": false,
-      "lineup_hash": "3eb608d14b16818e4dc8be493ef74ccf",
-      "min_player_attempts": 1957,
-      "players": [
-        1627783,
-        1629614,
-        1630167,
-        1630169,
-        1630174
-      ],
-      "possessions": 178,
-      "tier": "directional"
-    },
-    {
       "canonical": "202681,1627884,1629029,1630182,1641726",
       "counterfactual": false,
       "lineup_hash": "0508b95a32ab2217c2297ad88bb33ecb",
@@ -8891,6 +8876,21 @@
         1629029,
         1630182,
         1641726
+      ],
+      "possessions": 178,
+      "tier": "directional"
+    },
+    {
+      "canonical": "1627783,1629614,1630167,1630169,1630174",
+      "counterfactual": false,
+      "lineup_hash": "3eb608d14b16818e4dc8be493ef74ccf",
+      "min_player_attempts": 1957,
+      "players": [
+        1627783,
+        1629614,
+        1630167,
+        1630169,
+        1630174
       ],
       "possessions": 178,
       "tier": "directional"

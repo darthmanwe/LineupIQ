@@ -17,6 +17,7 @@
  */
 
 import type { Bindings } from "../index";
+import type { SelectionProfiles } from "../scoring/selection";
 
 export type SupportRow = {
   possessions: number;
@@ -110,6 +111,17 @@ export const loadSnapshot = (env: Bindings): Promise<SnapshotData> =>
 
 export const loadSelectionModel = (env: Bindings): Promise<SelectionModelData> =>
   read<SelectionModelData>(env, "selection_model.json");
+
+/**
+ * The per-player profiles the selection coefficients multiply.
+ *
+ * Kept separate from `selection_model.json` because they have different
+ * lifetimes: the coefficients change when the model is refitted, the profiles
+ * change when a season is added. Loading them together would evict a 280 KB
+ * object from the cache every time a 4 KB one changed.
+ */
+export const loadSelectionProfiles = (env: Bindings): Promise<SelectionProfiles> =>
+  read<SelectionProfiles>(env, "selection_profiles.json");
 
 /**
  * Published evaluation results, read from the run logs rather than recomputed.

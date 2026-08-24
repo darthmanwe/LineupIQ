@@ -31,7 +31,12 @@ from lineupiq.hashing import lineup_hash
 from lineupiq.models.support import Tier, assess, build_lineup_support, load_thresholds
 from lineupiq.paths import DataPaths
 
-__all__ = ["build_parity_fixture", "write_parity_fixture"]
+__all__ = [
+    "build_parity_fixture",
+    "build_selection_parity_fixture",
+    "write_parity_fixture",
+    "write_selection_parity_fixture",
+]
 
 #: How many random lineups to include beyond the hand-picked edge cases.
 N_RANDOM = 2_000
@@ -141,6 +146,132 @@ def write_parity_fixture(paths: DataPaths) -> Path:
     fixture = build_parity_fixture(paths)
     paths.parity.mkdir(parents=True, exist_ok=True)
     path = paths.parity / "lineups.json"
+    path.write_text(
+        json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
+
+
+#: How many random (shooter, offence, defence, context) draws to score.
+N_SELECTION_CASES = 500
+
+
+def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
+    """Score a sample of counterfactuals with the Python served scorer.
+
+    The fixture stores **utilities**, not just the softmax output. A softmax is a
+    contraction: two implementations that disagree in the fourth decimal of a
+    utility can agree to 1e-9 on the resulting share, especially for the small
+    zones. Comparing before the normalisation is the stronger check, so both are
+    stored and both are asserted.
+
+    The sample is built to exercise the branches that a random draw would miss:
+
+    - a shooter with no profile at all, whose log ratio must be exactly zero
+      rather than some arbitrary player's,
+    - a lineup with only one real teammate, so the ``min`` in ``spacing_min``
+      has nothing to hide behind,
+    - the shooter listed among his own five, which must be excluded from his own
+      spacing,
+    - a team/season key that does not exist, which must fall back to the league,
+    - every context flag on and off, since three of them multiply zone
+      indicators and a sign error in one is invisible when the flag is false.
+    """
+    from lineupiq.serve.export import export_selection_model, export_selection_profiles
+    from lineupiq.serve.score import ScoreRequest, score_selection
+
+    profiles = export_selection_profiles(paths)
+    model = export_selection_model(paths)
+    if not model.get("available"):
+        raise RuntimeError("no selection run log committed; run `lineupiq selection` first")
+
+    known = sorted(int(k) for k in profiles["shooter_log_ratio"])
+    team_keys = sorted(profiles["team_log_ratio"])
+    rng = np.random.default_rng(SEED)
+
+    requests: list[ScoreRequest] = [
+        # An unseen shooter. `0` is not a valid NBA player id, which is the point.
+        ScoreRequest(0, tuple(known[:5]), tuple(known[5:10])),
+        # One teammate. `spacing` and `spacing_min` must coincide here, and a
+        # test that only ever sees five-man lineups cannot check that.
+        ScoreRequest(known[0], (known[0], known[1]), tuple(known[5:10])),
+        # The shooter appears in his own lineup and must not space himself.
+        ScoreRequest(known[0], tuple(known[:5]), tuple(known[5:10])),
+        # A team/season that never existed.
+        ScoreRequest(known[0], tuple(known[:5]), tuple(known[5:10]), team_id=1, season=1999),
+        # No defenders at all: every opponent term must be exactly zero.
+        ScoreRequest(known[0], tuple(known[:5]), ()),
+        # Every context flag on, at a fast-break clock.
+        ScoreRequest(
+            known[1],
+            tuple(known[:5]),
+            tuple(known[5:10]),
+            seconds_into_possession=0.0,
+            live_ball=True,
+            second_chance=True,
+            clutch=True,
+        ),
+        # A late-clock possession, which drives `seconds_z` strongly positive.
+        ScoreRequest(known[1], tuple(known[:5]), tuple(known[5:10]), seconds_into_possession=24.0),
+    ]
+
+    for _ in range(N_SELECTION_CASES):
+        offence = [int(known[i]) for i in rng.choice(len(known), size=5, replace=False)]
+        defence = [int(known[i]) for i in rng.choice(len(known), size=5, replace=False)]
+        team_key = team_keys[int(rng.integers(len(team_keys)))]
+        team_id, season = team_key.split(":")
+        requests.append(
+            ScoreRequest(
+                shooter_id=offence[0],
+                offense=tuple(offence),
+                defense=tuple(defence),
+                team_id=int(team_id),
+                season=2000 + int(season),
+                seconds_into_possession=float(rng.uniform(0.0, 24.0)),
+                live_ball=bool(rng.integers(2)),
+                second_chance=bool(rng.integers(2)),
+                clutch=bool(rng.integers(2)),
+            )
+        )
+
+    cases: list[dict[str, Any]] = []
+    for request in requests:
+        result = score_selection(request, profiles, model["coefficients"], model["term_names"])
+        cases.append(
+            {
+                "request": {
+                    "shooter_id": request.shooter_id,
+                    "offense": list(request.offense),
+                    "defense": list(request.defense),
+                    "team_id": request.team_id,
+                    "season": request.season,
+                    "seconds_into_possession": request.seconds_into_possession,
+                    "live_ball": request.live_ball,
+                    "second_chance": request.second_chance,
+                    "clutch": request.clutch,
+                },
+                "utilities": list(result.utilities),
+                "mix": list(result.mix),
+                "baseline_mix": list(result.baseline_mix),
+                "shooter_known": result.shooter_known,
+                "shooter_weight": result.shooter_weight,
+            }
+        )
+
+    return {
+        "seed": SEED,
+        "zones": list(profiles["zones"]),
+        "term_names": list(model["term_names"]),
+        "n_cases": len(cases),
+        "n_unknown_shooters": sum(1 for c in cases if not c["shooter_known"]),
+        "cases": cases,
+    }
+
+
+def write_selection_parity_fixture(paths: DataPaths) -> Path:
+    fixture = build_selection_parity_fixture(paths)
+    paths.parity.mkdir(parents=True, exist_ok=True)
+    path = paths.parity / "selection.json"
     path.write_text(
         json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )

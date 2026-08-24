@@ -358,13 +358,17 @@ def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
     alternative-specific constants rather than to some arbitrary player -- and
     that fallback needs no data to express.
     """
+    from lineupiq.features.shot_context import attach_possession_context
     from lineupiq.io.gold import load_all_gold
     from lineupiq.models.selection import fit_selection_profiles, zone_attribute
     from lineupiq.transform.zones import ZONE_IDS
 
-    shots = load_all_gold(paths, "shot_facts").filter(
-        pl.col("lineup_for_hash").is_not_null() & pl.col("lineup_against_hash").is_not_null()
-    )
+    # The possession context has to be attached the same way `selection` attaches
+    # it, or the fitted `seconds_mean`/`seconds_std` would not be the ones the
+    # coefficients were fitted against.
+    shots = attach_possession_context(
+        load_all_gold(paths, "shot_facts"), load_all_gold(paths, "possession_facts")
+    ).filter(pl.col("lineup_for_hash").is_not_null() & pl.col("lineup_against_hash").is_not_null())
     profiles = fit_selection_profiles(shots)
 
     league = np.log(np.maximum(profiles.league_mix, 1e-12))

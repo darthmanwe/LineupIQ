@@ -13,6 +13,7 @@ import {
   loadEvaluation,
   loadPlayers,
   loadSelectionModel,
+  loadSelectionProfiles,
   loadSnapshot,
   loadSupport,
   loadZones,
@@ -21,6 +22,7 @@ import { MissingAsset } from "../data/store";
 import { envelope } from "../http/envelope";
 import { insufficientSupport, problem } from "../http/problem";
 import { assessSupport, whatWouldHelp } from "../scoring/support";
+import { scoreSelection } from "../scoring/selection";
 import { LINEUP_SIZE, lineupHash } from "../scoring/lineupHash";
 import type { Bindings } from "../index";
 
@@ -64,6 +66,104 @@ function parseLineup(body: unknown): { ids: number[] } | { error: string } {
   }
   if (new Set(ids).size !== ids.length) return { error: "a lineup cannot repeat a player" };
   return { ids };
+}
+
+type ScoreRequestInput = {
+  shooterId: number;
+  offense: number[];
+  defense: number[];
+  teamId: number | null;
+  season: number | null;
+  secondsIntoPossession: number | null;
+  liveBall: boolean;
+  secondChance: boolean;
+  clutch: boolean;
+};
+
+/**
+ * Parses a scoring request.
+ *
+ * Two rules worth stating because they are easy to get wrong in the other
+ * direction. The shooter **must** be one of the five: this is a model of which
+ * shot he takes given who is around him, and scoring him against a floor he is
+ * not on is a question the model was never fitted to answer. And
+ * `seconds_into_possession` left out means "league-average possession", which is
+ * the fitted mean -- not zero. Zero is a fast-break, and defaulting to it would
+ * quietly assert something strong about shot selection.
+ */
+function parseScoreRequest(body: unknown): ScoreRequestInput | { error: string } {
+  if (typeof body !== "object" || body === null) return { error: "body must be a JSON object" };
+  const raw = body as Record<string, unknown>;
+
+  const shooterId =
+    typeof raw.shooter_id === "number"
+      ? raw.shooter_id
+      : Number.parseInt(String(raw.shooter_id), 10);
+  if (!Number.isInteger(shooterId)) return { error: "`shooter_id` must be a player id" };
+
+  const ids = (value: unknown, field: string, required: boolean): number[] | { error: string } => {
+    if (value === undefined || value === null) {
+      return required ? { error: `\`${field}\` is required` } : [];
+    }
+    if (!Array.isArray(value)) return { error: `\`${field}\` must be an array of player ids` };
+    const out: number[] = [];
+    for (const item of value) {
+      const id = typeof item === "number" ? item : Number.parseInt(String(item), 10);
+      if (!Number.isInteger(id)) return { error: `\`${String(item)}\` is not a player id` };
+      out.push(id);
+    }
+    if (new Set(out).size !== out.length) return { error: `\`${field}\` cannot repeat a player` };
+    return out;
+  };
+
+  const offense = ids(raw.offense, "offense", true);
+  if ("error" in offense) return offense;
+  if (offense.length !== LINEUP_SIZE) {
+    return { error: `\`offense\` must contain exactly ${LINEUP_SIZE} ids, got ${offense.length}` };
+  }
+  if (!offense.includes(shooterId)) {
+    return {
+      error:
+        "`shooter_id` must be one of the five in `offense`. This model predicts which " +
+        "shot a player takes given who is on the floor with him; a shooter who is not " +
+        "on the floor is not a question it can answer.",
+    };
+  }
+
+  const defense = ids(raw.defense, "defense", false);
+  if ("error" in defense) return defense;
+  if (defense.length !== 0 && defense.length !== LINEUP_SIZE) {
+    return {
+      error: `\`defense\` must be omitted or contain exactly ${LINEUP_SIZE} ids, got ${defense.length}`,
+    };
+  }
+
+  const optionalInt = (value: unknown): number | null => {
+    if (value === undefined || value === null) return null;
+    const parsed = typeof value === "number" ? value : Number.parseInt(String(value), 10);
+    return Number.isInteger(parsed) ? parsed : null;
+  };
+
+  let seconds: number | null = null;
+  if (raw.seconds_into_possession !== undefined && raw.seconds_into_possession !== null) {
+    const parsed = Number(raw.seconds_into_possession);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 24) {
+      return { error: "`seconds_into_possession` must be between 0 and 24" };
+    }
+    seconds = parsed;
+  }
+
+  return {
+    shooterId,
+    offense,
+    defense,
+    teamId: optionalInt(raw.team_id),
+    season: optionalInt(raw.season),
+    secondsIntoPossession: seconds,
+    liveBall: raw.live_ball === true,
+    secondChance: raw.second_chance === true,
+    clutch: raw.clutch === true,
+  };
 }
 
 export function mountLive(app: App): void {
@@ -215,6 +315,168 @@ export function mountLive(app: App): void {
             warnings: assessment.counterfactual
               ? ["These five have never shared the floor in this snapshot."]
               : [],
+          }
+        )
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * Score a counterfactual: what shot mix does this shooter take on this floor?
+   *
+   * This is the endpoint the project is about, and what it returns is a
+   * *distribution over zones*, not a points estimate. That is a deliberate
+   * change of question. The conversion model -- does a lineup make a player
+   * shoot better from the same spot -- was built first, fully evaluated, and
+   * came back at +0.019% log loss against a passing negative control. It is not
+   * a real effect. Shot **selection** is: +0.082% on unseen five-man
+   * combinations. Lineup construction operates on which shots get taken, so
+   * that is what is served.
+   *
+   * `delta` is the interesting field. It is this lineup's mix minus the same
+   * shooter's mix with every lineup term at the league average, so it isolates
+   * the part of the prediction the five-man combination is responsible for.
+   * Those numbers are small -- fractions of a percentage point -- and they are
+   * served at their real size rather than rescaled into looking impressive.
+   *
+   * Support gating is the same contract as `/lineups/support`: a refused tier
+   * gets a 422 with what would help, and a directional tier gets a 200 whose
+   * `delta` is populated but whose `mix` carries an explicit warning. There is
+   * no path that returns a confident number with a footnote.
+   */
+  app.post("/lineups/score", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return problem(c, {
+        status: 400,
+        code: "MALFORMED_BODY",
+        title: "Body is not JSON",
+        detail:
+          'Send `{"shooter_id": id, "offense": [5 ids], "defense": [5 ids]}`. ' +
+          "`defense`, `team_id`, `season` and the context flags are optional.",
+      });
+    }
+
+    const request = parseScoreRequest(body);
+    if ("error" in request) {
+      return problem(c, {
+        status: 400,
+        code: "INVALID_REQUEST",
+        title: "Invalid scoring request",
+        detail: request.error,
+      });
+    }
+
+    try {
+      const [model, profiles, support, players] = await Promise.all([
+        loadSelectionModel(c.env),
+        loadSelectionProfiles(c.env),
+        loadSupport(c.env),
+        loadPlayers(c.env),
+      ]);
+
+      if (!model.available || !model.term_names || !model.coefficients) {
+        return problem(c, {
+          status: 503,
+          code: "MODEL_NOT_FITTED",
+          title: "The selection model has not been fitted",
+          detail: model.reason ?? "No selection run log is committed.",
+        });
+      }
+
+      const assessment = assessSupport(request.offense, support, players);
+      if (assessment.tier === "refused") {
+        return insufficientSupport(c, {
+          detail:
+            "These five players do not have enough recorded evidence to support any " +
+            "estimate of how they change this shooter's shot selection.",
+          nPossessions: assessment.possessions,
+          threshold: assessment.thresholds.possessions,
+          shortfallPlayers: assessment.shortfallPlayers,
+          whatWouldHelp: whatWouldHelp(assessment),
+        });
+      }
+
+      const result = scoreSelection(
+        {
+          shooterId: request.shooterId,
+          offense: request.offense,
+          defense: request.defense,
+          teamId: request.teamId,
+          season: request.season,
+          secondsIntoPossession: request.secondsIntoPossession,
+          liveBall: request.liveBall,
+          secondChance: request.secondChance,
+          clutch: request.clutch,
+        },
+        profiles,
+        { available: true, term_names: model.term_names, coefficients: model.coefficients }
+      );
+
+      const warnings: string[] = [];
+      if (!result.shooterKnown) {
+        warnings.push(
+          `Player ${request.shooterId} has no fitted profile in this snapshot. ` +
+            "The prediction is the league baseline for this lineup, not a prediction about him."
+        );
+      }
+      if (result.shooterWeight < 0.5) {
+        warnings.push(
+          `Only ${(result.shooterWeight * 100).toFixed(0)}% of this shooter's mix is his own ` +
+            "evidence; the rest is the league prior. Read the shape, not the digits."
+        );
+      }
+      if (assessment.tier === "directional") {
+        warnings.push(
+          "This five-man combination is below the reportable possession floor. The " +
+            "direction of each delta is supported; its magnitude is not."
+        );
+      }
+      if (assessment.counterfactual) {
+        warnings.push("These five have never shared the floor in this snapshot.");
+      }
+
+      return c.json(
+        envelope(
+          c,
+          {
+            lineup_hash: assessment.lineupHash,
+            shooter: {
+              player_id: String(request.shooterId),
+              name: players.players[String(request.shooterId)]?.name ?? null,
+              known: result.shooterKnown,
+              // The Dirichlet-multinomial shrinkage weight, shipped beside the
+              // value it applies to rather than buried in a model card.
+              evidence_weight: result.shooterWeight,
+            },
+            zones: result.zones.map((zone, z) => ({
+              zone_id: zone,
+              // Null when the magnitude is not supported. A caller that renders
+              // this gets nothing to render, which is the intended outcome.
+              share: assessment.tier === "reportable" ? (result.mix[z] as number) : null,
+              baseline_share: result.baselineMix[z] as number,
+              delta: (result.mix[z] as number) - (result.baselineMix[z] as number),
+            })),
+          },
+          {
+            snapshot: c.env.SNAPSHOT ?? null,
+            support: {
+              lineup_possessions: assessment.possessions,
+              min_player_attempts: assessment.minPlayerAttempts,
+              tier: assessment.tier,
+              counterfactual: assessment.counterfactual,
+              thresholds: assessment.thresholds,
+            },
+            scoring: {
+              closed_form_version: "selection-conditional-logit-v1",
+              parity_fixture: "data/parity/selection.json",
+              git_sha: model.git_sha ?? null,
+            },
+            warnings,
           }
         )
       );

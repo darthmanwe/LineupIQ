@@ -111,11 +111,21 @@ export const ROUTES: readonly RouteSpec[] = [
   {
     method: "POST",
     path: "/lineups/score",
-    summary: "Score any five-man lineup, optionally against five defenders.",
-    state: "planned",
-    willServe: "Per-player, per-zone EPSA with 80% conformal intervals and a support tier.",
+    summary: "How this five-man lineup shifts a shooter's shot selection.",
+    state: "live",
+    // Not what this route was originally specced to serve, and the change is
+    // the finding. It was going to return per-zone EPSA -- how well a lineup
+    // makes a player shoot from a given spot. That was built, evaluated
+    // against a full baseline ladder, and came back at +0.019% log loss on
+    // unseen combinations: nothing. Shot *selection* is where the effect lives,
+    // so the route serves a distribution over zones and the delta against the
+    // league-average lineup.
+    willServe:
+      "A predicted distribution over the nine zones, the same shooter's " +
+      "league-average-lineup baseline, and the delta between them -- with the " +
+      "magnitude nulled out below the reportable possession floor.",
     milestone: M3,
-    backedBy: "the closed-form scorer, proven equal to the Python fit to 1e-9",
+    backedBy: "the closed-form conditional logit, equal to the Python fit to 1e-9",
   },
   {
     method: "POST",

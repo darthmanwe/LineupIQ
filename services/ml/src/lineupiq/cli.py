@@ -945,14 +945,19 @@ def backtest(
 
 @app.command()
 def parity() -> None:
-    """Write the Python/TypeScript parity fixture.
+    """Write the Python/TypeScript parity fixtures.
 
-    The Worker re-implements the lineup hash and the support tier. A
-    disagreement between the two languages raises nothing -- it returns the
-    wrong answer, or zero rows. This writes Python's answers for a fixed sample;
-    a vitest suite inside workerd asserts TypeScript reproduces them.
+    The Worker re-implements three things: the lineup hash, the support tier,
+    and the whole served selection model. None of the three raises on
+    disagreement -- a hash mismatch returns zero rows and looks like missing
+    data, a tier mismatch serves a confident number where Python would have
+    refused, and a scorer mismatch serves a plausible shot mix that is wrong.
+
+    So Python writes its answers for a fixed sample and a vitest suite inside
+    workerd asserts TypeScript reproduces them, to 1e-9. Neither implementation
+    is the reference; the fixture is the contract.
     """
-    from lineupiq.serve.parity import write_parity_fixture
+    from lineupiq.serve.parity import write_parity_fixture, write_selection_parity_fixture
 
     paths = DataPaths.discover()
     path = write_parity_fixture(paths)
@@ -971,6 +976,26 @@ def parity() -> None:
         console.print(
             "[yellow]At least one tier has no cases.[/] A parity fixture that never "
             "exercises a branch cannot prove the branch agrees."
+        )
+
+    # The scorer's own fixture. Separate file, separate sample, because it
+    # exercises different branches: an unseen shooter, a two-man lineup, an
+    # empty defence, a team/season that never existed.
+    selection_path = write_selection_parity_fixture(paths)
+    selection = _json.loads(selection_path.read_text(encoding="utf-8"))
+    scorer = Table(title="Selection scorer parity", header_style="bold")
+    scorer.add_column("")
+    scorer.add_column("Value", justify="right")
+    scorer.add_row("Cases", f"{selection['n_cases']:,}")
+    scorer.add_row("Unseen shooters", f"{selection['n_unknown_shooters']:,}")
+    scorer.add_row("Terms", f"{len(selection['term_names'])}")
+    console.print(scorer)
+    console.print(f"wrote [cyan]{selection_path}[/]")
+    if selection["n_unknown_shooters"] == 0:
+        console.print(
+            "[yellow]No unseen shooter in the sample.[/] The league-mix fallback is "
+            "the branch most likely to differ between the two languages, and an "
+            "all-known sample cannot prove it agrees."
         )
 
 

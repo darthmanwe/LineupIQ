@@ -55,8 +55,13 @@ export type Meta = {
   /**
    * Lets a served number be traced to the exact closed form that produced it,
    * and to the fixture proving the TypeScript and Python implementations agree.
+   *
+   * `git_sha` is the commit whose run log the coefficients came from. Without it
+   * a served number can be traced to an *implementation* but not to a *fit*,
+   * and those are different questions: "which code computed this" and "which
+   * training run produced the numbers it used".
    */
-  scoring?: { closed_form_version: string; parity_fixture: string };
+  scoring?: { closed_form_version: string; parity_fixture: string; git_sha?: string | null };
   warnings: string[];
 };
 

@@ -17,6 +17,7 @@ import coverageJson from "../../web/public/data/coverage.json";
 import evaluationJson from "../../web/public/data/evaluation.json";
 import playersJson from "../../web/public/data/players.json";
 import selectionJson from "../../web/public/data/selection_model.json";
+import selectionProfilesJson from "../../web/public/data/selection_profiles.json";
 import snapshotJson from "../../web/public/data/snapshot.json";
 import supportJson from "../../web/public/data/support.json";
 import zonesJson from "../../web/public/data/zones.json";
@@ -29,6 +30,7 @@ const ASSETS: Record<string, unknown> = {
   "zones.json": zonesJson,
   "snapshot.json": snapshotJson,
   "selection_model.json": selectionJson,
+  "selection_profiles.json": selectionProfilesJson,
   "evaluation.json": evaluationJson,
   "coverage.json": coverageJson,
 };
@@ -208,6 +210,114 @@ describe("the refusal contract", () => {
     );
     expect(response.status).toBe(400);
     expect(((await response.json()) as { code: string }).code).toBe("MALFORMED_BODY");
+  });
+});
+
+describe("scoring a counterfactual lineup", () => {
+  it("serves a distribution that sums to one, and a delta against the league baseline", async () => {
+    const five = highVolumePlayers(5);
+    const defence = highVolumePlayers(10).slice(5);
+    const response = await post("/api/lineups/score", {
+      shooter_id: five[0],
+      offense: five,
+      defense: defence,
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: {
+        shooter: { known: boolean; evidence_weight: number };
+        zones: Array<{
+          zone_id: string;
+          share: number | null;
+          baseline_share: number;
+          delta: number;
+        }>;
+      };
+      meta: { support: { tier: string }; scoring: { parity_fixture: string } };
+    };
+
+    expect(body.data.zones).toHaveLength(9);
+    expect(body.data.shooter.known).toBe(true);
+
+    // The baseline is always populated: it needs no lineup evidence, because
+    // it is defined as the league-average lineup.
+    const baselineTotal = body.data.zones.reduce((a, z) => a + z.baseline_share, 0);
+    expect(Math.abs(baselineTotal - 1)).toBeLessThan(1e-9);
+
+    // The deltas must cancel. Shares live on a simplex, so a lineup that pushes
+    // a shooter toward threes has to pull him away from something else -- if
+    // these summed to anything but zero the model would be creating attempts.
+    const deltaTotal = body.data.zones.reduce((a, z) => a + z.delta, 0);
+    expect(Math.abs(deltaTotal)).toBeLessThan(1e-9);
+
+    expect(body.meta.scoring.parity_fixture).toBe("data/parity/selection.json");
+  });
+
+  it("nulls the magnitude for a lineup below the reportable floor", async () => {
+    // The whole refusal contract in one assertion: a directional answer keeps
+    // its direction and loses its digits. There is no path that returns a
+    // confident share with a caveat attached.
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/score", {
+      shooter_id: five[0],
+      offense: five,
+      defense: highVolumePlayers(10).slice(5),
+    });
+    const body = (await response.json()) as {
+      data: { zones: Array<{ share: number | null; delta: number }> };
+      meta: { support: { tier: string }; warnings: string[] };
+    };
+    if (body.meta.support.tier !== "reportable") {
+      expect(body.data.zones.every((z) => z.share === null)).toBe(true);
+      expect(body.data.zones.every((z) => Number.isFinite(z.delta))).toBe(true);
+      expect(body.meta.warnings.join(" ")).toMatch(/direction/i);
+    }
+  });
+
+  it("refuses a shooter who is not on the floor rather than guessing", async () => {
+    const five = highVolumePlayers(5);
+    const outsider = highVolumePlayers(6)[5];
+    const response = await post("/api/lineups/score", {
+      shooter_id: outsider,
+      offense: five,
+      defense: [],
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { detail: string };
+    expect(body.detail).toMatch(/must be one of the five/);
+  });
+
+  it("warns loudly about a shooter it has never seen", async () => {
+    const five = highVolumePlayers(4);
+    const response = await post("/api/lineups/score", {
+      shooter_id: 1,
+      offense: [1, ...five],
+      defense: [],
+    });
+    const body = (await response.json()) as {
+      data: { shooter: { known: boolean } };
+      meta: { warnings: string[] };
+    };
+    if (response.status === 200) {
+      expect(body.data.shooter.known).toBe(false);
+      expect(body.meta.warnings.join(" ")).toMatch(/no fitted profile/);
+    }
+  });
+
+  it("rejects a possession clock outside the shot clock", async () => {
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/score", {
+      shooter_id: five[0],
+      offense: five,
+      seconds_into_possession: 40,
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a four-man offence", async () => {
+    const four = highVolumePlayers(4);
+    const response = await post("/api/lineups/score", { shooter_id: four[0], offense: four });
+    expect(response.status).toBe(400);
   });
 });
 
