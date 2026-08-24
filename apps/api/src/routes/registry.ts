@@ -135,17 +135,26 @@ export const ROUTES: readonly RouteSpec[] = [
     path: "/lineups/optimal-plays",
     summary: "Top-k actions ranked by their priced contribution.",
     state: "planned",
-    // Blocked on one specific thing, and it is worth naming rather than leaving
-    // as "not done yet". The route's whole point is refusing to order two
-    // actions whose intervals overlap -- and the selection model does not
-    // currently publish standard errors on its coefficients, so the threshold
-    // for "overlap" would be a number chosen to make the output look sensible.
-    // That is the single thing this API is built not to do, so the route waits.
+    // What is still missing is specific, and it is not the hard part. The
+    // coefficients now carry standard errors, so the overlap threshold can be
+    // derived rather than chosen -- which was the blocker. What remains is
+    // propagating that uncertainty through to a *per-zone* interval, and a
+    // zone's priced contribution is a softmax difference times a constant, so
+    // it needs the delta method over the full 20x20 covariance rather than its
+    // diagonal. The contributions are strongly correlated through the softmax;
+    // using only the diagonal would overstate the uncertainty of a difference
+    // and refuse to rank things that are in fact distinguishable, which is its
+    // own kind of dishonesty.
+    //
+    // Concretely: export the covariance matrix, finite-difference the scorer in
+    // the Worker for the gradient, and extend the parity fixture to the
+    // resulting intervals. An unverified second implementation of a variance
+    // calculation is worse than none, so the route waits for the fixture too.
     willServe:
       "A ranked list — or an explicitly unordered set when the intervals overlap, " +
       "because ranking indistinguishable options is a way of lying.",
     milestone: M4,
-    backedBy: "the priced shot-mix contribution, once the coefficients carry standard errors",
+    backedBy: "the priced shot-mix contribution, with delta-method intervals per zone",
   },
   {
     method: "POST",
