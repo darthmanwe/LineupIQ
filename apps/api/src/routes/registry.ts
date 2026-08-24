@@ -69,7 +69,7 @@ export const ROUTES: readonly RouteSpec[] = [
   {
     method: "GET",
     path: "/zones",
-    summary: "Shot-zone vocabulary and SVG path geometry.",
+    summary: "Shot-zone vocabulary plus the SVG geometry the court heatmap draws.",
     state: "live",
   },
 

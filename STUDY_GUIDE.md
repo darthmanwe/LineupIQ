@@ -459,6 +459,43 @@ Three outcomes, and the boundaries are the product:
 
 Never a 200 with a confident number and a footnote.
 
+### The court heatmap — a chart that cannot disagree with the model
+
+Four decisions, and the first is the one people get wrong.
+
+**The fill is diverging, not sequential.** The quantity is expected points per attempt _minus
+the league average_ — a polarity. Restricted-area value dwarfs corner-three value, so a
+light-to-dark ramp on raw expected points would simply redraw the arc and say nothing.
+
+**The geometry is generated in Python, not restated in TypeScript.** Every zone's SVG path
+comes from the same constants as `derive_zone`, and a test walks a dense grid asserting that
+every point inside an outline is a point the model puts in that zone — 104,229 samples, 100%
+agreement off the boundaries. Restating the arc in TypeScript is how a chart ends up
+colouring a region the model never scored.
+
+That test earned its place twice: it found 2,245 grid points' worth of **gap** in the upper
+corners (the top-three outline cut straight from the arc to the viewBox corner instead of
+following the 45° lines out), and a **misplaced label anchor** — the wing-three label sat at
+court (−215, 225), where |x| < y, which is top-of-the-key territory.
+
+**Uncertainty lives in the mark.** A zone below the attempt floor renders hatched, with a
+dashed edge and no value — not coloured with a caveat in a tooltip nobody opens. Colour
+claims a magnitude; a hatch declines to.
+
+Because at league scale no zone is within three orders of magnitude of the floor, the page
+ships **two real shooters** side by side rather than a mechanism that never fires: Anthony
+Edwards (5,447 attempts, every zone clears) against Trey Alexander (41 attempts, every zone
+refused).
+
+**The palette was validated, not eyeballed.** Four steps per arm of the diverging blue↔red
+pair, each arm passing the ordinal checks in both modes; poles separating at CVD ΔE 17.7
+light / 13.2 dark against a target of 8. The red arm was generated to match the documented
+blue arm's OKLCH lightness, so the two arms are perceptually balanced rather than picked.
+
+The surface itself reproduces the modern consensus without being fitted to it: restricted
+area +0.239, corner threes +0.065 to +0.078, wing three +0.011, top of the key −0.040, and
+mid-range worst at −0.25 to −0.27.
+
 ### Retrieval — the design document's own claim, measured
 
 The design document warns that a stint is too short to carry stable statistical content, then
@@ -646,6 +683,9 @@ Keep this list. It is the most credible part of the story.
 | Groundedness flagged "per 100" as ungrounded          | Writing the test                          | Would fail every correct narrative                     |
 | Parity fixture had zero `reportable` cases            | The generator's own warning               | A branch never exercised cannot be proved to agree     |
 | First ablation conflated model class with lineup info | Reading the ladder                        | Reported a model-class effect as a lineup effect       |
+| Court heatmap had 2,245 grid points of gap            | The geometry agreement test               | Upper corners belonged to no zone                      |
+| Wing-three label sat in top-of-the-key                | The label-anchor test                     | A chart mislabelling its own regions                   |
+| `points_per_attempt` averaged the shot's face value   | Every zone came out 2.000 or 3.000        | A "surface" that was just the arc redrawn              |
 | UTF-8 double-encoding in three files                  | `Ã‚Â±8` in the rendered README            | My own PowerShell patching through a legacy code page  |
 
 The last one is why I stopped using shell string-patching on non-ASCII files, and why the
@@ -664,7 +704,9 @@ report renderer is pure ASCII.
 - Hand-graded retrieval queries (40 of them). Programmatic judgements are the honest
   substitute and are labelled as such.
 - The Workers AI dense retrieval leg.
-- Court heatmap and the four web pages beyond static shells.
+- The **per-lineup** surface: picking five players and scoring for them needs the served
+  closed-form scorer. The court heatmap itself is live, at league scale and for two worked
+  examples. The trade and evidence pages remain static shells.
 - Playwright media capture, and the deploy itself — `wrangler login` is an interactive
   browser OAuth flow.
 
@@ -864,24 +906,26 @@ Then `apps/api/test/parity.test.ts`:
 
 **Open in this order.** Every one of these is worth reading aloud from.
 
-| #   | File                                                | Why                                                                        |
-| --- | --------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1   | `README.md`                                         | Headline finding, estimability table, generated results                    |
-| 2   | `services/ml/src/lineupiq/transform/stints.py`      | The reconstruction. `side`, `_replay`, the tolerant window                 |
-| 3   | `services/ml/src/lineupiq/transform/events.py`      | `canonical_order` — `EVENTNUM` is not chronological                        |
-| 4   | `services/ml/src/lineupiq/transform/possessions.py` | `possession_windows` — the best bug story                                  |
-| 5   | `services/ml/src/lineupiq/eval/leakage.py`          | `FORBIDDEN_FEATURES` and why each entry is there                           |
-| 6   | `services/ml/src/lineupiq/models/selection.py`      | `SELECTION_TERMS`, the pre-registered signs, the factored design           |
-| 7   | `services/ml/src/lineupiq/models/rapm.py`           | Separate λ, game-grouped folds, split-half reliability, the ridge sandwich |
-| 8   | `services/ml/src/lineupiq/eval/backtest_trade.py`   | Pre-move training, DiD, the placebo arm                                    |
-| 9   | `services/ml/src/lineupiq/models/moves.py`          | `power_analysis` and `CLAIMED_EFFECT_PER_100`                              |
-| 10  | `services/ml/src/lineupiq/models/support.py`        | The three tiers                                                            |
-| 11  | `apps/api/test/live.test.ts`                        | The 422, and the never-a-point-estimate invariant                          |
-| 12  | `apps/api/test/parity.test.ts`                      | Cross-language parity over 2,604 cases                                     |
-| 13  | `services/ml/src/lineupiq/runtime.py`               | The memory cap, and the ctypes handle bug                                  |
-| 14  | `services/ml/src/lineupiq/report/render.py`         | Why numbers are generated, never typed                                     |
-| 15  | `docs/modeling.md`                                  | Every correction, with its magnitude                                       |
-| 16  | `.github/workflows/ci.yml`                          | 11 jobs, all offline and free                                              |
+| #   | File                                                  | Why                                                                        |
+| --- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| 1   | `README.md`                                           | Headline finding, estimability table, generated results                    |
+| 2   | `services/ml/src/lineupiq/transform/stints.py`        | The reconstruction. `side`, `_replay`, the tolerant window                 |
+| 3   | `services/ml/src/lineupiq/transform/events.py`        | `canonical_order` — `EVENTNUM` is not chronological                        |
+| 4   | `services/ml/src/lineupiq/transform/possessions.py`   | `possession_windows` — the best bug story                                  |
+| 5   | `services/ml/src/lineupiq/eval/leakage.py`            | `FORBIDDEN_FEATURES` and why each entry is there                           |
+| 6   | `services/ml/src/lineupiq/models/selection.py`        | `SELECTION_TERMS`, the pre-registered signs, the factored design           |
+| 7   | `services/ml/src/lineupiq/models/rapm.py`             | Separate λ, game-grouped folds, split-half reliability, the ridge sandwich |
+| 8   | `services/ml/src/lineupiq/eval/backtest_trade.py`     | Pre-move training, DiD, the placebo arm                                    |
+| 9   | `services/ml/src/lineupiq/models/moves.py`            | `power_analysis` and `CLAIMED_EFFECT_PER_100`                              |
+| 10  | `services/ml/src/lineupiq/models/support.py`          | The three tiers                                                            |
+| 11  | `apps/api/test/live.test.ts`                          | The 422, and the never-a-point-estimate invariant                          |
+| 12  | `apps/api/test/parity.test.ts`                        | Cross-language parity over 2,604 cases                                     |
+| 13  | `services/ml/src/lineupiq/transform/zone_geometry.py` | Court geometry, generated from the model's own constants                   |
+| 14  | `apps/web/src/components/court/CourtHeatmap.tsx`      | Diverging fill, hatch below the floor, every zone labels its n             |
+| 15  | `services/ml/src/lineupiq/runtime.py`                 | The memory cap, and the ctypes handle bug                                  |
+| 16  | `services/ml/src/lineupiq/report/render.py`           | Why numbers are generated, never typed                                     |
+| 17  | `docs/modeling.md`                                    | Every correction, with its magnitude                                       |
+| 18  | `.github/workflows/ci.yml`                            | 11 jobs, all offline and free                                              |
 
 **Quick commands to run live:**
 

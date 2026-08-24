@@ -93,6 +93,81 @@ def _write(directory: Path, name: str, payload: Any) -> int:
     return len(text.encode("utf-8"))
 
 
+def export_zone_surface(paths: DataPaths) -> dict[str, Any]:
+    """League-wide points per attempt by zone, and the deviation from the mean.
+
+    This is what the court heatmap fills: **points per attempt minus the league
+    average**, which is a *diverging* quantity and is encoded with a diverging
+    scale. Filling raw points-per-attempt with a sequential ramp would be the
+    obvious mistake -- restricted-area value dwarfs corner-three value, so a
+    light-to-dark ramp would just redraw the court and say nothing.
+
+    It is the **league** surface, not a per-lineup one. A per-lineup surface
+    needs the served scorer, which is not built; the page says so rather than
+    implying the colours are lineup-specific.
+    """
+    from lineupiq.io.gold import load_all_gold
+
+    shots = load_all_gold(paths, "shot_facts")
+    league = as_float((shots["made"] * shots["shot_points"]).mean())
+
+    thresholds = load_thresholds()
+
+    def surface(frame: pl.DataFrame) -> dict[str, Any]:
+        grouped = (
+            frame.group_by("zone_id")
+            .agg(
+                pl.len().alias("attempts"),
+                pl.col("made").mean().alias("fg"),
+                (pl.col("made") * pl.col("shot_points")).mean().alias("points_per_attempt"),
+            )
+            .sort("zone_id")
+        )
+        return {
+            row["zone_id"]: {
+                "attempts": int(row["attempts"]),
+                "fg": _round(row["fg"]),
+                "points_per_attempt": _round(row["points_per_attempt"]),
+                "deviation": _round(as_float(row["points_per_attempt"]) - league),
+                # The mark, not a tooltip, carries this. A zone below the floor
+                # renders hatched with a dashed edge and no value.
+                "below_floor": int(row["attempts"]) < thresholds.min_zone_attempts,
+            }
+            for row in grouped.iter_rows(named=True)
+        }
+
+    # Two worked examples, because at league scale no zone is ever below the
+    # floor -- 6,176 attempts in the thinnest zone against a floor of ten. A
+    # refusal rendering that never fires on the data shipped beside it is
+    # decoration, so a genuinely low-volume shooter is exported alongside a
+    # high-volume one and the page shows both courts.
+    per_player = shots.group_by("shooter_id").agg(pl.len().alias("attempts")).sort("attempts")
+    thin = per_player.filter(pl.col("attempts").is_between(40, 90))
+    thick = per_player.sort("attempts", descending=True)
+
+    examples: dict[str, Any] = {}
+    players = load_all_gold(paths, "dim_player")
+    names = dict(zip(players["player_id"].to_list(), players["player_name"].to_list(), strict=True))
+    for label, table in (("high_volume", thick), ("low_volume", thin)):
+        if table.is_empty():
+            continue
+        player_id = int(table["shooter_id"].item(0))
+        block = shots.filter(pl.col("shooter_id") == player_id)
+        examples[label] = {
+            "player_id": player_id,
+            "player_name": names.get(player_id, str(player_id)),
+            "attempts": block.height,
+            "zones": surface(block),
+        }
+
+    return {
+        "league_points_per_attempt": _round(league),
+        "min_zone_attempts": thresholds.min_zone_attempts,
+        "zones": surface(shots),
+        "examples": examples,
+    }
+
+
 def export_zones() -> dict[str, Any]:
     """The zone vocabulary. One definition, two consumers.
 
@@ -100,10 +175,49 @@ def export_zones() -> dict[str, Any]:
     Exporting the taxonomy rather than restating it in TypeScript is what makes
     that structural instead of a convention someone has to remember.
     """
+    from lineupiq.transform.zone_geometry import COURT_VIEWBOX, ZONE_OUTLINES, zone_svg_path
+
+    # The SVG path ships with the zone. This is the whole point of the file: the
+    # court heatmap draws what the model scores, because both come from the same
+    # geometry constants. A test walks a dense grid asserting that every point
+    # inside an outline is a point `derive_zone` puts in that zone.
     return {
-        "zones": [{"id": zone_id, "label": label} for zone_id, label in ZONES],
+        "viewBox": COURT_VIEWBOX,
+        "zones": [
+            {
+                "id": zone_id,
+                "label": label,
+                "path": zone_svg_path(ZONE_OUTLINES[zone_id]),
+                "labelAt": _zone_label_anchor(zone_id),
+            }
+            for zone_id, label in ZONES
+        ],
         "count": len(ZONES),
     }
+
+
+#: Where each zone's own count is drawn, in SVG coordinates.
+#:
+#: Hand-placed rather than computed from a centroid: a polygon centroid for the
+#: lane-minus-restricted-area ring lands inside the hole, and for the top-three
+#: region it lands off the arc. Every zone labels its own n, so the anchor has to
+#: be somewhere a reader will actually look.
+_ZONE_LABEL_ANCHORS: dict[str, tuple[float, float]] = {
+    "restricted_area": (0.0, 375.0),
+    "paint_non_ra": (0.0, 250.0),
+    "mid_baseline": (-150.0, 350.0),
+    "mid_wing": (-165.0, 230.0),
+    "mid_top": (0.0, 185.0),
+    "corner_three_left": (-235.0, 350.0),
+    "corner_three_right": (235.0, 350.0),
+    "wing_three": (-225.0, 245.0),
+    "top_three": (0.0, 95.0),
+}
+
+
+def _zone_label_anchor(zone_id: str) -> dict[str, float]:
+    x, y = _ZONE_LABEL_ANCHORS.get(zone_id, (0.0, 200.0))
+    return {"x": x, "y": y}
 
 
 def export_support(paths: DataPaths) -> dict[str, Any]:
@@ -307,6 +421,7 @@ def export_all(paths: DataPaths, directory: Path | None = None) -> ExportManifes
     target = directory or (paths.root / "apps" / "web" / "public" / "data")
     files = {
         "zones.json": _write(target, "zones.json", export_zones()),
+        "zone_surface.json": _write(target, "zone_surface.json", export_zone_surface(paths)),
         "support.json": _write(target, "support.json", export_support(paths)),
         "players.json": _write(target, "players.json", export_players(paths)),
         "selection_model.json": _write(

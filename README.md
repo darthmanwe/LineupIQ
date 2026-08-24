@@ -10,7 +10,8 @@ behind every number, and an explicit refusal when there isn't one.**
 > reconstructed and validated against box-score minutes, two shot models (conversion and
 > selection) are fitted against full baseline ladders, RAPM is fitted on possessions with
 > published split-half reliability, and the trade projection is backtested against real
-> mid-season moves with its power analysis stated first. The retrieval/LLM layer is not
+> mid-season moves with its power analysis stated first, and the court heatmap is live. The
+> retrieval evaluation runs offline; live narrative generation is not
 > built; its endpoints return `501 NOT_YET_BACKED` naming what will back them. No number in
 > this README is typed by hand — every one is rendered from a run log by
 > `lineupiq report render`, and CI fails if a committed block goes stale.
@@ -65,7 +66,7 @@ else is on the floor, then projects how a trade changes it.
 
 | Page                    | What it answers                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Lineup Optimizer**    | Court heatmap of expected points per shot by zone, and the top-k actions ranked by EPSA.                       |
+| **Lineup Optimizer**    | **Live:** court heatmap of expected points per attempt by zone, with a hatched refusal below the support floor. |
 | **Trade Simulator**     | Rotation before and after a swap, with offensive and defensive deltas under an explicitly chosen minutes rule. |
 | **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.    |
 | **Data Quality & Eval** | Every quality gate, the model's calibration, and what it gets wrong.                                           |
