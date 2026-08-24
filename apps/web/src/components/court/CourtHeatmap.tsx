@@ -107,7 +107,13 @@ export const ATTEMPT_SHARE: MetricSpec = {
   valueLabel: "Share",
   countNoun: "possession",
   formatDeviation: (d) => `${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(2)}`,
-  formatValue: (v) => `${(v.points_per_attempt * 100).toFixed(2)}%`,
+  // NaN is how the caller says "the API nulled this". Reconstructing it from the
+  // baseline plus the delta would put a number on screen that the support
+  // contract refused to serve, which is the one thing none of this may do.
+  formatValue: (v) =>
+    Number.isFinite(v.points_per_attempt)
+      ? `${(v.points_per_attempt * 100).toFixed(2)}%`
+      : "not reportable",
   formatSecondary: (v) => `${(v.fg * 100).toFixed(2)}% with a league-average lineup on the floor`,
   secondaryLabel: "Baseline",
   formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(2)}%`,
@@ -181,6 +187,10 @@ export function CourtHeatmap({
 
   const active = hovered ? values[hovered] : undefined;
   const activeShape = shapes.find((s) => s.id === hovered);
+  const anyBelowFloor = shapes.some((shape) => {
+    const value = values[shape.id];
+    return !value || value.below_floor;
+  });
 
   return (
     <figure className="court">
@@ -330,12 +340,17 @@ export function CourtHeatmap({
           ))}
         </span>
         <span>Above league</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-          <svg width="22" height="12" aria-hidden>
-            <rect width="22" height="12" fill={`url(#${patternId}-hatch)`} />
-          </svg>
-          below the {minZoneAttempts}-{metric.countNoun} floor — no estimate
-        </span>
+        {anyBelowFloor && (
+          // Only when the hatch can actually fire. A legend entry for a mark
+          // that never appears on the chart beside it is decoration, and it
+          // teaches a reader to expect a distinction the chart is not making.
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            <svg width="22" height="12" aria-hidden>
+              <rect width="22" height="12" fill={`url(#${patternId}-hatch)`} />
+            </svg>
+            below the {minZoneAttempts}-{metric.countNoun} floor — no estimate
+          </span>
+        )}
         <button
           type="button"
           className="court__tablebtn"

@@ -106,8 +106,15 @@ export function LineupScorer({
         // about where the evidence lives.
         attempts: result.meta.support.lineup_possessions,
         fg: zone.baseline_share,
-        points_per_attempt: zone.share ?? zone.baseline_share + zone.delta,
+        // NaN, not a reconstruction. When the tier is directional the API nulls
+        // the absolute share on purpose; adding the delta back to the baseline
+        // would put that exact number on screen anyway.
+        points_per_attempt: zone.share ?? Number.NaN,
         deviation: zone.delta,
+        // The *delta* is what the court colours, and it is supported at every
+        // tier above refused -- that is what "directional" means. So the zones
+        // are never hatched here even when the share is withheld, and the hatch
+        // legend correctly does not appear.
         below_floor: false,
       };
     }
