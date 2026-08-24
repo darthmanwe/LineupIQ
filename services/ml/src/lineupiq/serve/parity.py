@@ -20,7 +20,6 @@ The sample deliberately includes the cases that break things:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +30,10 @@ from lineupiq.config import SEED
 from lineupiq.hashing import lineup_hash
 from lineupiq.models.support import Tier, assess, build_lineup_support, load_thresholds
 from lineupiq.paths import DataPaths
+from lineupiq.validate.reproduce import Drift, compare_artefacts
 
 __all__ = [
     "FLOAT_TOLERANCE",
-    "ParityDrift",
     "build_parity_fixture",
     "build_selection_parity_fixture",
     "check_fixtures",
@@ -314,69 +313,7 @@ def write_selection_parity_fixture(paths: DataPaths) -> Path:
     return path
 
 
-@dataclass(frozen=True)
-class ParityDrift:
-    """One place a regenerated fixture disagrees with the committed one."""
-
-    fixture: str
-    path: str
-    committed: object
-    fresh: object
-
-    def __str__(self) -> str:
-        return f"{self.fixture}: {self.path}: {self.committed!r} -> {self.fresh!r}"
-
-
-def _compare(
-    fixture: str,
-    committed: object,
-    fresh: object,
-    *,
-    path: str = "",
-    tolerance: float,
-    drifts: list[ParityDrift],
-) -> None:
-    """Walk two decoded fixtures, allowing floats to differ by ``tolerance``."""
-    if isinstance(committed, dict) and isinstance(fresh, dict):
-        for key in sorted(set(committed) | set(fresh)):
-            if key not in committed or key not in fresh:
-                drifts.append(ParityDrift(fixture, f"{path}.{key}", key in committed, key in fresh))
-                continue
-            _compare(
-                fixture,
-                committed[key],
-                fresh[key],
-                path=f"{path}.{key}",
-                tolerance=tolerance,
-                drifts=drifts,
-            )
-        return
-
-    if isinstance(committed, list) and isinstance(fresh, list):
-        if len(committed) != len(fresh):
-            drifts.append(ParityDrift(fixture, f"{path}[len]", len(committed), len(fresh)))
-            return
-        for i, (a, b) in enumerate(zip(committed, fresh, strict=True)):
-            _compare(fixture, a, b, path=f"{path}[{i}]", tolerance=tolerance, drifts=drifts)
-        return
-
-    # `bool` is a subclass of `int`, and a flag flipping is never a rounding
-    # difference -- so it is checked for identity before the numeric branch.
-    if isinstance(committed, bool) or isinstance(fresh, bool):
-        if committed is not fresh:
-            drifts.append(ParityDrift(fixture, path, committed, fresh))
-        return
-
-    if isinstance(committed, (int, float)) and isinstance(fresh, (int, float)):
-        if abs(float(committed) - float(fresh)) > tolerance:
-            drifts.append(ParityDrift(fixture, path, committed, fresh))
-        return
-
-    if committed != fresh:
-        drifts.append(ParityDrift(fixture, path, committed, fresh))
-
-
-def check_fixtures(paths: DataPaths) -> list[ParityDrift]:
+def check_fixtures(paths: DataPaths) -> list[Drift]:
     """Regenerate both fixtures and report every real disagreement.
 
     This replaces a `git diff` on the committed files, and the reason is in
@@ -385,7 +322,7 @@ def check_fixtures(paths: DataPaths) -> list[ParityDrift]:
     exactly in both -- a missing key, a changed tier, a different player id or a
     list that grew is a difference at any tolerance.
     """
-    drifts: list[ParityDrift] = []
+    drifts: list[Drift] = []
 
     for name, builder, tolerance in (
         ("lineups.json", build_parity_fixture, 0.0),
@@ -393,10 +330,10 @@ def check_fixtures(paths: DataPaths) -> list[ParityDrift]:
     ):
         path = paths.parity / name
         if not path.exists():
-            drifts.append(ParityDrift(name, "", "committed", "missing"))
+            drifts.append(Drift(name, "", "committed", "missing"))
             continue
         committed = json.loads(path.read_text(encoding="utf-8"))
         fresh = json.loads(json.dumps(builder(paths)))
-        _compare(name, committed, fresh, tolerance=tolerance, drifts=drifts)
+        compare_artefacts(name, committed, fresh, tolerance=tolerance, drifts=drifts)
 
     return drifts

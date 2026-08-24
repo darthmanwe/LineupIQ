@@ -297,6 +297,16 @@ def _game_folds(game_ids: np.ndarray, *, n_folds: int, seed: int) -> list[np.nda
     return [np.isin(game_ids, bucket) for bucket in buckets]
 
 
+#: Decimal places co-occurrence ratios are rounded to before they are compared.
+#:
+#: These are ratios of possession counts read out of a sparse matrix product, so
+#: they are not bit-portable, and every use of them below is a *comparison* --
+#: which means one bit in the last place decides an ordering as firmly as a whole
+#: possession would. Six places is far finer than any distinction that matters
+#: between two teammates and far coarser than the noise.
+_CO_OCCURRENCE_PRECISION = 6
+
+
 def co_occurrence_report(
     design: RapmDesign, *, ceiling: float = CO_OCCURRENCE_CEILING
 ) -> dict[str, Any]:
@@ -324,19 +334,40 @@ def co_occurrence_report(
     with np.errstate(divide="ignore", invalid="ignore"):
         conditional = np.where(totals[:, None] > 0, shared / totals[:, None], 0.0)
 
+    # Rounded before any comparison, and the report is only sorted afterwards.
+    # Both steps below are decided by comparisons on these values, and both were
+    # non-deterministic without this.
+    #
+    # `argmax` picks the *first* maximal index, so a player whose two most
+    # frequent teammates tie gets whichever one came out microscopically larger
+    # -- and these are ratios of possession counts computed through a sparse
+    # matrix product, so the last place differs between platforms. Rounding makes
+    # a genuine tie an exact tie, and `argmax` then resolves it by index, which
+    # is the same everywhere.
+    #
+    # The sort has the same problem more visibly: `worst` is exactly 1.0 for
+    # every player who never took the floor without a particular teammate, so the
+    # top of this list is a solid block of ties, and `flagged[:50]` was
+    # publishing an arbitrary fifty of them.
+    conditional = np.round(conditional, _CO_OCCURRENCE_PRECISION)
     worst = conditional.max(axis=1)
     partner = conditional.argmax(axis=1)
 
-    flagged = [
-        {
-            "player_id": design.players[i],
-            "possessions": int(totals[i]),
-            "max_co_occurrence": float(worst[i]),
-            "partner_id": design.players[int(partner[i])],
-        }
-        for i in np.argsort(-worst)
-        if worst[i] > ceiling
-    ]
+    flagged = sorted(
+        (
+            {
+                "player_id": design.players[i],
+                "possessions": int(totals[i]),
+                "max_co_occurrence": float(worst[i]),
+                "partner_id": design.players[int(partner[i])],
+            }
+            for i in range(n)
+            if worst[i] > ceiling
+        ),
+        # Player id breaks the tie. `design.players` is sorted, so this is a
+        # total order and it is the same on every machine.
+        key=lambda row: (-float(row["max_co_occurrence"]), int(row["player_id"])),
+    )
     return {
         "ceiling": ceiling,
         "n_flagged": len(flagged),

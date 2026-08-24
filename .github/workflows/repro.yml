@@ -55,15 +55,20 @@ jobs:
       - name: Selection model refits to the committed metrics
         run: uv run lineupiq selection --verify --memory-cap-gb 12
 
-      # RAPM and the trade backtest have no --verify yet; their run logs are
-      # regenerated and diffed instead, which catches the same drift.
-      - name: RAPM and the trade backtest are unchanged
-        run: |
-          uv run lineupiq rapm --memory-cap-gb 12
-          uv run lineupiq backtest --rule inherit --memory-cap-gb 12
+      # RAPM refits and compares in memory, with a tolerance, for the same
+      # reason the parity fixtures do: the run log holds correlations and ridge
+      # solutions, and those are not bit-portable. A byte-identity gate here
+      # failed on differences of order 1e-15 after every real reproducibility
+      # bug in it had been found and fixed, which is a gate reporting on the
+      # platform rather than on the model.
+      - name: RAPM reproduces
+        run: uv run lineupiq rapm --check --memory-cap-gb 12
+
+      # The trade backtest has no --check yet, so it is regenerated and diffed.
+      # Its numbers are cluster-bootstrap quantiles, which is exactly the shape
+      # that will need a tolerance too -- noted rather than pretended otherwise.
+      - name: The trade backtest is unchanged
+        run: uv run lineupiq backtest --rule inherit --memory-cap-gb 12
       - name: Assert nothing moved
         working-directory: .
-        run: |
-          git diff --stat -- services/ml/runs/ data/gold/
-          git diff --exit-code -- services/ml/runs/rapm/run.json \
-            || (echo "::error::RAPM moved. Re-render the README and commit." && exit 1)
+        run: git diff --stat -- services/ml/runs/ data/gold/

@@ -662,9 +662,29 @@ def selection(
     console.print(f"\nrun log written to [cyan]{path.name}[/]")
 
 
+#: How far a regenerated RAPM number may move before it counts as a change.
+#:
+#: The run log holds split-half correlations, ridge solutions and standard errors
+#: -- results of matrix products that are not bit-portable. A byte-identity gate
+#: on this file failed on differences of order 1e-15 *after* every real
+#: reproducibility bug in it had been found and fixed, which is a gate reporting
+#: on the platform rather than on the model. See `lineupiq.validate.reproduce`.
+#:
+#: Tighter than the selection fixture's 1e-9 because these are correlations and
+#: coefficients rather than softmax outputs, so their noise is correspondingly
+#: smaller. Still six orders of magnitude below any change a different model
+#: would produce.
+RAPM_TOLERANCE = 1e-12
+
+
 @app.command()
 def rapm(
     folds: int = typer.Option(5, help="Game-grouped folds for lambda selection."),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Refit and compare to the committed run log instead of writing it.",
+    ),
     memory_cap_gb: float = typer.Option(
         DEFAULT_MEMORY_CAP_GB, help="Hard ceiling on process memory. 0 disables the cap."
     ),
@@ -795,6 +815,33 @@ def rapm(
         "boundary_sensitivity": report.boundary_sensitivity,
         "lambda_trace": report.lambda_trace,
     }
+    if check:
+        # Compared rather than diffed, and with a tolerance rather than byte for
+        # byte. Structure is still exact: a player appearing in or vanishing from
+        # the non-identified list, a changed lambda, a different flagged count
+        # are differences at any tolerance.
+        from lineupiq.validate.reproduce import compare_artefacts
+
+        committed_path = directory / "run.json"
+        if not committed_path.exists():
+            console.print(f"[bold red]No committed run log at {committed_path}.[/]")
+            raise typer.Exit(code=1)
+
+        committed = json.loads(committed_path.read_text(encoding="utf-8"))
+        fresh = json.loads(json.dumps(payload))
+        drifts = compare_artefacts("rapm/run.json", committed, fresh, tolerance=RAPM_TOLERANCE)
+        if drifts:
+            console.print(f"\n[bold red]{len(drifts)} value(s) moved[/]")
+            for drift in drifts[:20]:
+                console.print(f"  - {drift}")
+            if len(drifts) > 20:
+                console.print(f"  … and {len(drifts) - 20} more")
+            raise typer.Exit(code=1)
+        console.print(
+            f"\n[green]RAPM reproduces.[/] [dim]Structure exactly; floats to {RAPM_TOLERANCE:g}.[/]"
+        )
+        return
+
     text = json.dumps(payload, indent=2, sort_keys=True)
     (directory / "run.json").write_text(f"{text}\n", encoding="utf-8", newline="\n")
 

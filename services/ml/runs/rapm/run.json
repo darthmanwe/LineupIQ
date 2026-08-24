@@ -9,40 +9,10 @@
   },
   "co_occurrence": {
     "ceiling": 0.85,
-    "median_max_co_occurrence": 0.5192415785387317,
+    "median_max_co_occurrence": 0.519242,
     "n_flagged": 51,
     "n_players": 770,
     "non_identified": [
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1631172,
-        "player_id": 1642502,
-        "possessions": 80
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1629003,
-        "player_id": 1642385,
-        "possessions": 46
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1629610,
-        "player_id": 1630622,
-        "possessions": 8
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 203490,
-        "player_id": 1630606,
-        "possessions": 1
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1631207,
-        "player_id": 1630250,
-        "possessions": 80
-      },
       {
         "max_co_occurrence": 1.0,
         "partner_id": 1629642,
@@ -51,33 +21,33 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1642353,
-        "player_id": 1642280,
-        "possessions": 111
+        "partner_id": 1629013,
+        "player_id": 1626143,
+        "possessions": 14
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630225,
-        "player_id": 1630648,
-        "possessions": 22
+        "partner_id": 1642403,
+        "player_id": 1627746,
+        "possessions": 46
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1631207,
-        "player_id": 1630792,
-        "possessions": 36
+        "partner_id": 1627745,
+        "player_id": 1628402,
+        "possessions": 18
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1627788,
-        "player_id": 1630701,
-        "possessions": 3
+        "partner_id": 1629033,
+        "player_id": 1628416,
+        "possessions": 29
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630346,
-        "player_id": 1629232,
-        "possessions": 31
+        "partner_id": 1630541,
+        "player_id": 1628435,
+        "possessions": 84
       },
       {
         "max_co_occurrence": 1.0,
@@ -87,9 +57,9 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630540,
-        "player_id": 1631211,
-        "possessions": 32
+        "partner_id": 1630346,
+        "player_id": 1629232,
+        "possessions": 31
       },
       {
         "max_co_occurrence": 1.0,
@@ -99,15 +69,51 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1631169,
-        "player_id": 1631159,
-        "possessions": 399
-      },
-      {
-        "max_co_occurrence": 1.0,
         "partner_id": 201144,
         "player_id": 1629735,
         "possessions": 15
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631207,
+        "player_id": 1630250,
+        "possessions": 80
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 203490,
+        "player_id": 1630606,
+        "possessions": 1
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629610,
+        "player_id": 1630622,
+        "possessions": 8
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1630225,
+        "player_id": 1630648,
+        "possessions": 22
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1627788,
+        "player_id": 1630701,
+        "possessions": 3
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631207,
+        "player_id": 1630792,
+        "possessions": 36
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1631169,
+        "player_id": 1631159,
+        "possessions": 399
       },
       {
         "max_co_occurrence": 1.0,
@@ -117,15 +123,21 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630528,
-        "player_id": 1641815,
-        "possessions": 22
+        "partner_id": 1630540,
+        "player_id": 1631211,
+        "possessions": 32
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1629013,
-        "player_id": 1626143,
-        "possessions": 14
+        "partner_id": 1627853,
+        "player_id": 1631376,
+        "possessions": 7
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1628981,
+        "player_id": 1631495,
+        "possessions": 17
       },
       {
         "max_co_occurrence": 1.0,
@@ -141,15 +153,27 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1628988,
-        "player_id": 1642434,
-        "possessions": 29
+        "partner_id": 1630528,
+        "player_id": 1641815,
+        "possessions": 22
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630322,
-        "player_id": 1642449,
-        "possessions": 86
+        "partner_id": 1628995,
+        "player_id": 1641879,
+        "possessions": 28
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1642353,
+        "player_id": 1642280,
+        "possessions": 111
+      },
+      {
+        "max_co_occurrence": 1.0,
+        "partner_id": 1629003,
+        "player_id": 1642385,
+        "possessions": 46
       },
       {
         "max_co_occurrence": 1.0,
@@ -165,96 +189,72 @@
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1642403,
-        "player_id": 1627746,
-        "possessions": 46
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1628995,
-        "player_id": 1641879,
-        "possessions": 28
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1629033,
-        "player_id": 1628416,
+        "partner_id": 1628988,
+        "player_id": 1642434,
         "possessions": 29
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1627745,
-        "player_id": 1628402,
-        "possessions": 18
+        "partner_id": 1630322,
+        "player_id": 1642449,
+        "possessions": 86
       },
       {
         "max_co_occurrence": 1.0,
-        "partner_id": 1630541,
-        "player_id": 1628435,
-        "possessions": 84
+        "partner_id": 1631172,
+        "player_id": 1642502,
+        "possessions": 80
       },
       {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1628981,
-        "player_id": 1631495,
-        "possessions": 17
-      },
-      {
-        "max_co_occurrence": 1.0,
-        "partner_id": 1627853,
-        "player_id": 1631376,
-        "possessions": 7
-      },
-      {
-        "max_co_occurrence": 0.9619047619047619,
+        "max_co_occurrence": 0.961905,
         "partner_id": 1630528,
         "player_id": 1631309,
         "possessions": 105
       },
       {
-        "max_co_occurrence": 0.9517543859649122,
+        "max_co_occurrence": 0.951754,
         "partner_id": 1641816,
         "player_id": 1641790,
         "possessions": 228
       },
       {
-        "max_co_occurrence": 0.9487179487179487,
+        "max_co_occurrence": 0.948718,
         "partner_id": 1630699,
         "player_id": 1641857,
         "possessions": 234
       },
       {
-        "max_co_occurrence": 0.9420289855072463,
+        "max_co_occurrence": 0.942029,
         "partner_id": 1630540,
         "player_id": 1629718,
         "possessions": 138
       },
       {
-        "max_co_occurrence": 0.9411764705882353,
+        "max_co_occurrence": 0.941176,
         "partner_id": 1630556,
         "player_id": 1641771,
         "possessions": 119
       },
       {
-        "max_co_occurrence": 0.9358974358974359,
+        "max_co_occurrence": 0.935897,
         "partner_id": 1630311,
         "player_id": 1642050,
         "possessions": 156
       },
       {
-        "max_co_occurrence": 0.9300699300699301,
+        "max_co_occurrence": 0.93007,
         "partner_id": 1641765,
         "player_id": 1641926,
         "possessions": 143
       },
       {
-        "max_co_occurrence": 0.9263157894736842,
+        "max_co_occurrence": 0.926316,
         "partner_id": 1642278,
         "player_id": 1641817,
         "possessions": 95
       },
       {
-        "max_co_occurrence": 0.9117647058823529,
+        "max_co_occurrence": 0.911765,
         "partner_id": 1630202,
         "player_id": 1628382,
         "possessions": 374
@@ -266,49 +266,49 @@
         "possessions": 80
       },
       {
-        "max_co_occurrence": 0.8861788617886179,
+        "max_co_occurrence": 0.886179,
         "partner_id": 1630561,
         "player_id": 1629663,
         "possessions": 123
       },
       {
-        "max_co_occurrence": 0.8830188679245283,
+        "max_co_occurrence": 0.883019,
         "partner_id": 1642281,
         "player_id": 1641772,
         "possessions": 265
       },
       {
-        "max_co_occurrence": 0.8819188191881919,
+        "max_co_occurrence": 0.881919,
         "partner_id": 1642277,
         "player_id": 1642484,
         "possessions": 271
       },
       {
-        "max_co_occurrence": 0.865979381443299,
+        "max_co_occurrence": 0.865979,
         "partner_id": 1629670,
         "player_id": 1631338,
         "possessions": 485
       },
       {
-        "max_co_occurrence": 0.8652173913043478,
+        "max_co_occurrence": 0.865217,
         "partner_id": 1641712,
         "player_id": 1631386,
         "possessions": 230
       },
       {
-        "max_co_occurrence": 0.8641509433962264,
+        "max_co_occurrence": 0.864151,
         "partner_id": 1631098,
         "player_id": 1630225,
         "possessions": 265
       },
       {
-        "max_co_occurrence": 0.8627450980392157,
+        "max_co_occurrence": 0.862745,
         "partner_id": 1630929,
         "player_id": 1641847,
         "possessions": 51
       },
       {
-        "max_co_occurrence": 0.8582677165354331,
+        "max_co_occurrence": 0.858268,
         "partner_id": 1641766,
         "player_id": 1630929,
         "possessions": 127
