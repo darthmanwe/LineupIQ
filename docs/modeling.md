@@ -257,6 +257,29 @@ quarter of it, clamped to 4–24 GB.
 
 ---
 
+## The reproducibility tolerance, and what it is allowed to be loose about
+
+Two tolerances, because two kinds of metric.
+
+`log_loss`, `brier`, `uncertainty`, `calibration_slope` and `top1_accuracy` are smooth
+functions of the predictions. They reproduce to **1e-6** and have no excuse not to.
+
+ECE and the Brier decomposition's reliability and resolution terms sort predictions into bins
+and aggregate within them, which makes them *discontinuous in the predictions*: a value on a
+bin edge moves by 1e-16 — ordinary variation between two platforms' matrix multiplies — and
+lands in the next bin. Measured, on identical folds: `log_loss` and `brier` held to 1e-6 while
+`ece` moved 2.5e-4. They get **1e-3**, which is still below the estimator's own sampling error
+at this sample size, and the drift report says which bound it applied.
+
+**The classification was wrong twice, both times because it was a list.** An exact-name set
+held the selection model's nineteen per-zone-group variants (`three_ece`, `rim_resolution`,
+`classwise_ece`) to 1e-6 and failed the gate on nothing; it also included `skill_score`, which
+is `1 - brier/uncertainty` and smooth. The rule is now derived from the estimator — any
+underscore-separated part of the name matching `ece`, `reliability` or `resolution` — so a
+metric added under a new prefix classifies itself.
+
+---
+
 ## Order dependence, and why a seed is not reproducibility
 
 Running the gate on a second platform found the same bug shape in five places. It is worth

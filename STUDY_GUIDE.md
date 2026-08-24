@@ -889,11 +889,36 @@ two machines' matrix multiplies — and lands in the next bin.
 Measured, on identical folds: `log_loss` and `brier` held to 1e-6 while `ece` moved 2.5e-4.
 The predictions agreed; the binning of them did not.
 
-Those four metrics now get 1e-3, and the drift report names which tolerance it applied. This
-is not a weakened gate. A 20-bin ECE on ~100k held-out shots has a sampling standard error of
+Binned estimators now get 1e-3 and the drift report names which tolerance it applied. This is
+not a weakened gate. A 20-bin ECE on ~100k held-out shots has a sampling standard error of
 order 1e-3, so 1e-6 was never a statement about the estimator — it was a statement about one
 machine's floating point. What the gate exists to catch is a _changed model_, and a changed
 model does not move ECE by 1e-4 while leaving log loss at 1e-9.
+
+**And I got the classification itself wrong twice, which is the more useful half of this
+story.** The first version was a set of exact metric names: `{"ece", "reliability",
+"resolution", "skill_score"}`. Two problems, and neither raised anything.
+
+The selection model reports the same three estimators once per zone group — `three_ece`,
+`rim_resolution`, `classwise_ece` — and an exact-match set held all nineteen of those to 1e-6.
+The gate failed on bin-edge noise and named nineteen metrics, every one of which was fine.
+
+And `skill_score` should never have been in the list. It is `1 - brier/uncertainty`, a smooth
+function of the predictions, and giving it a loose bound weakened the gate for no reason at
+all.
+
+The fix is not a longer list. **A metric is binned if any underscore-separated part of its
+name is `ece`, `reliability` or `resolution`** — the rule now follows from what the estimator
+_is_, so a metric added tomorrow under a new prefix is classified correctly without anyone
+remembering to update a set. `tests/test_verify_tolerance.py` asserts both directions by name,
+and asserts bounds on the two constants: if the loose tolerance ever crept above the
+estimator's own sampling error it would stop being "wide enough for bin-edge noise" and start
+being "wide enough to hide a real change", and that distinction is the whole argument for
+having it.
+
+The generalisable lesson, and it applies well beyond this file: **enumerating instances is a
+rule you have to maintain; deriving from the definition is a rule that maintains itself.** I
+reached for the enumeration first because it was faster, and paid for it twice.
 
 **The follow-on problem, and `refit.yml`.** If this machine intermittently corrupts memory,
 every number it computed is suspect — including the committed baselines that `--verify`
