@@ -657,6 +657,8 @@ class ConditionalLogit:
     n_iterations: int = 0
     converged: bool = False
     final_loss: float = float("nan")
+    #: Filled by :meth:`compute_standard_errors`, on the served fit only.
+    standard_errors: np.ndarray | None = None
 
     def objective(
         self,
@@ -707,6 +709,83 @@ class ConditionalLogit:
         self.final_loss = float(result.fun)
         return self
 
+    def observed_information(self, design: SelectionDesign, *, step: float = 1e-5) -> np.ndarray:
+        """Hessian of the mean **unpenalised** negative log likelihood at the fit.
+
+        Central differences on the analytic gradient, which is the cheap and
+        accurate way round: differencing the gradient costs ``2p`` evaluations for
+        ``p`` parameters, while differencing the loss twice costs ``2p^2`` and
+        loses half the significant digits. Twenty parameters is forty evaluations.
+
+        The penalty is subtracted rather than avoided. ``objective`` returns the
+        penalised gradient because that is what the optimiser needs, and the
+        penalty's own gradient is exactly ``l2 * mask * theta`` -- so removing it
+        is arithmetic, not a second code path that could drift from the first.
+
+        The result is symmetrised. Finite differences are symmetric only up to
+        truncation error, and an asymmetric "Hessian" propagates into a covariance
+        with negative variances on the diagonal, which surfaces as a nan much
+        later and looks like a data problem.
+        """
+        if self.coefficients is None:
+            raise RuntimeError("model is not fitted")
+
+        theta = np.asarray(self.coefficients, dtype=float)
+        mask = design.penalty_mask
+        n_terms = len(theta)
+        buffer = np.empty((design.n, design.n_zones))
+
+        def unpenalised_gradient(point: np.ndarray) -> np.ndarray:
+            _, grad = self.objective(point, design, buffer)
+            return grad - self.l2 * mask * point
+
+        hessian = np.empty((n_terms, n_terms))
+        for j in range(n_terms):
+            h = step * max(1.0, abs(theta[j]))
+            forward, backward = theta.copy(), theta.copy()
+            forward[j] += h
+            backward[j] -= h
+            hessian[:, j] = (unpenalised_gradient(forward) - unpenalised_gradient(backward)) / (
+                2.0 * h
+            )
+        return 0.5 * (hessian + hessian.T)
+
+    def coefficient_covariance(self, design: SelectionDesign) -> np.ndarray:
+        """Asymptotic covariance of the fitted coefficients.
+
+        The **ridge sandwich** ``H^-1 I H^-1``, not the inverse Hessian. The fit
+        is penalised, so a plain inverse would describe a different estimator
+        than the one that produced these numbers: shrinkage trades bias for
+        variance, and the sandwich is what accounts for both sides of it. RAPM in
+        this repository uses the same estimator for the same reason.
+
+        ``objective`` returns the *mean* negative log likelihood, so its Hessian
+        is per-observation information and the total is ``n`` times larger. The
+        ``1 / n`` here is where the sample size enters, and it is why these
+        intervals are tight while a five-man lineup's rating is not: 671,251
+        attempts is a great deal of evidence about twenty parameters, and almost
+        none about any particular combination of five players.
+        """
+        information = self.observed_information(design)
+        penalised = information + self.l2 * np.diag(design.penalty_mask)
+        inverse = np.linalg.inv(penalised)
+        return inverse @ information @ inverse / design.n
+
+    def compute_standard_errors(self, design: SelectionDesign) -> ConditionalLogit:
+        """Attach standard errors. Called on the served fit, not on every fold.
+
+        Deliberately separate from ``fit``. Cross-validation fits this model
+        eighteen times per pass, and none of those fits needs a covariance
+        matrix -- only the coefficients that actually get served do.
+        """
+        variances = np.diag(self.coefficient_covariance(design))
+        # A negative variance means the sandwich came out indefinite, which is a
+        # real signal about a flat direction in the likelihood. Taking an
+        # absolute value would launder it into a small, confident-looking
+        # standard error, so it becomes a nan and the audit reports no interval.
+        self.standard_errors = np.where(variances > 0, np.sqrt(np.abs(variances)), np.nan)
+        return self
+
     def predict_proba(self, design: SelectionDesign) -> np.ndarray:
         if self.coefficients is None:
             raise RuntimeError("model is not fitted")
@@ -718,18 +797,54 @@ class ConditionalLogit:
         return float(self.coefficients[self.term_names.index(name)])
 
     def sign_audit(self) -> dict[str, dict[str, object]]:
-        """Compare every fitted coefficient against its pre-registered sign."""
+        """Compare every fitted coefficient against its pre-registered sign.
+
+        Three verdicts once standard errors are available, not two.
+
+        An audit that only reports *agrees* or *DISAGREES* is weaker than it
+        looks. A coefficient of +0.097 whose 95% interval spans zero gets
+        recorded as agreeing with a positive prediction, and it agrees with
+        nothing -- the data cannot tell. Counting that as a confirmation is the
+        same error as reading a null result as a refutation.
+
+        So a term whose interval contains zero is **indeterminate** and counts as
+        neither. That can only make the audit harder to pass, which is the
+        direction an audit should err in.
+        """
         out: dict[str, dict[str, object]] = {}
         for term in SELECTION_TERMS:
             if term.expected_sign is None or term.name not in self.term_names:
                 continue
             value = self.coefficient(term.name)
-            out[term.name] = {
+            entry: dict[str, object] = {
                 "value": value,
                 "expected_sign": term.expected_sign,
-                "verdict": "agrees" if np.sign(value) == term.expected_sign else "DISAGREES",
                 "is_lineup": term.is_lineup,
             }
+
+            error: float | None = None
+            if self.standard_errors is not None:
+                candidate = float(self.standard_errors[self.term_names.index(term.name)])
+                error = candidate if np.isfinite(candidate) else None
+
+            if error is None:
+                entry["standard_error"] = None
+                entry["verdict"] = "agrees" if np.sign(value) == term.expected_sign else "DISAGREES"
+                out[term.name] = entry
+                continue
+
+            # 1.96 for a two-sided 95% interval on an asymptotically normal MLE.
+            half_width = 1.96 * error
+            entry["standard_error"] = error
+            entry["z"] = value / error if error > 0 else float("nan")
+            entry["ci95"] = [value - half_width, value + half_width]
+            if abs(value) <= half_width:
+                entry["verdict"] = "indeterminate"
+            elif np.sign(value) == term.expected_sign:
+                entry["verdict"] = "agrees"
+            else:
+                entry["verdict"] = "DISAGREES"
+            out[term.name] = entry
         return out
 
     def to_dict(self) -> dict[str, object]:
@@ -740,6 +855,11 @@ class ConditionalLogit:
             "l2": self.l2,
             "n_iterations": self.n_iterations,
             "converged": self.converged,
+            "standard_errors": (
+                None
+                if self.standard_errors is None
+                else [None if not np.isfinite(v) else float(v) for v in self.standard_errors]
+            ),
             "sign_audit": self.sign_audit(),
         }
 

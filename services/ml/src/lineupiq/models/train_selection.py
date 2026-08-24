@@ -311,6 +311,13 @@ def train_and_evaluate_selection(
     profiles = fit_selection_profiles(usable)
     design = build_selection_design(usable, profiles)
     fitted = ConditionalLogit().fit(design)
+
+    # Standard errors, on this fit only. The cross-validation above fits this
+    # model eighteen times and none of those needs a covariance matrix -- only
+    # the coefficients that get served and audited do.
+    report("standard errors: ridge sandwich over the observed information")
+    fitted.compute_standard_errors(design)
+
     log.model = {
         **fitted.to_dict(),
         "observed_mix": summarise_mix(usable),
@@ -320,10 +327,18 @@ def train_and_evaluate_selection(
     }
     report("within-shooter robustness refit done")
 
+    # Three verdicts, counted separately. Folding `indeterminate` into `agrees`
+    # would report a coefficient the data cannot sign as a confirmation of
+    # whichever sign noise produced, which is the failure the standard errors
+    # were added to remove.
     audit = fitted.sign_audit()
-    disagreements = [name for name, row in audit.items() if row["verdict"] == "DISAGREES"]
-    log.notes.append(
-        f"sign audit: {len(audit) - len(disagreements)}/{len(audit)} pre-registered signs agree"
-        + (f"; DISAGREES: {', '.join(disagreements)}" if disagreements else "")
-    )
+    agree = [n for n, row in audit.items() if row["verdict"] == "agrees"]
+    disagree = [n for n, row in audit.items() if row["verdict"] == "DISAGREES"]
+    unknown = [n for n, row in audit.items() if row["verdict"] == "indeterminate"]
+    note = f"sign audit: {len(agree)}/{len(audit)} agree"
+    if disagree:
+        note += f"; DISAGREES: {', '.join(sorted(disagree))}"
+    if unknown:
+        note += f"; indeterminate (interval spans zero): {', '.join(sorted(unknown))}"
+    log.notes.append(note)
     return log

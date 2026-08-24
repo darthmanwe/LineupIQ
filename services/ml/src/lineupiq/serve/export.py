@@ -395,6 +395,15 @@ def export_selection_model(paths: DataPaths) -> dict[str, Any]:
         "git_sha": run.get("git_sha"),
         "term_names": model.get("term_names", []),
         "coefficients": [_round(c) for c in model.get("coefficients", [])],
+        # Shipped beside the coefficients rather than left in the run log. A
+        # served coefficient without its standard error is a point estimate
+        # pretending to be a fact, and the surface that displays one needs to
+        # know which of its terms the data cannot actually sign.
+        "standard_errors": (
+            None
+            if model.get("standard_errors") is None
+            else [None if e is None else _round(e) for e in model["standard_errors"]]
+        ),
         "observed_mix": {k: _round(v) for k, v in (model.get("observed_mix") or {}).items()},
         "sign_audit": model.get("sign_audit", {}),
         "n_shots": run.get("n_shots"),

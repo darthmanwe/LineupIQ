@@ -343,23 +343,68 @@ def _selection_results(ctx: RenderContext) -> str:
     within = run.get("model", {}).get("within_shooter_coefficients", {})
     if audit:
         agree = sum(1 for row in audit.values() if row.get("verdict") == "agrees")
+        disagree = sum(1 for row in audit.values() if row.get("verdict") == "DISAGREES")
+        unknown = sum(1 for row in audit.values() if row.get("verdict") == "indeterminate")
+        has_errors = any(row.get("standard_error") is not None for row in audit.values())
+
+        headline = f"**Pre-registered sign audit -- {agree}/{len(audit)} agree"
+        if disagree:
+            headline += f", {disagree} disagree"
+        if unknown:
+            headline += f", {unknown} indeterminate"
+        headline += ".**"
+
         out += [
-            f"**Pre-registered sign audit -- {agree}/{len(audit)} agree.** Each coefficient's",
-            "direction was written down in the source before the model was fitted, so a term",
-            "that improves log loss while pointing the wrong way cannot be presented as",
-            "confirmation of the thing it was named after.",
+            headline + " Each coefficient's direction was written down in the source before",
+            "the model was fitted, so a term that improves log loss while pointing the wrong",
+            "way cannot be presented as confirmation of the thing it was named after.",
+        ]
+        if has_errors:
+            out += [
+                "",
+                "**Indeterminate is a third verdict, not a rounding of the other two.** A",
+                "coefficient whose 95% interval spans zero has not confirmed its",
+                "pre-registered sign and has not contradicted it -- the data cannot tell, and",
+                "counting it as agreement would be the same error as reading a null result as",
+                "a refutation. Intervals come from the ridge sandwich `H^-1 I H^-1` over the",
+                "observed information, which is the right estimator for a penalised fit and",
+                "the same one RAPM uses.",
+            ]
+        out += [
             "",
-            "| Term | Coefficient | Expected | Verdict | Lineup term |",
-            "|---|---|---|---|---|",
+            (
+                "| Term | Coefficient | Std. error | 95% interval | Expected | Verdict | Lineup term |"
+                if has_errors
+                else "| Term | Coefficient | Expected | Verdict | Lineup term |"
+            ),
+            "|---|---|---|---|---|---|---|" if has_errors else "|---|---|---|---|---|",
         ]
         for name, row in audit.items():
             expected = "+" if row.get("expected_sign") == 1 else "-"
-            verdict = "agrees" if row.get("verdict") == "agrees" else "**DISAGREES**"
+            raw = row.get("verdict")
+            verdict = {
+                "agrees": "agrees",
+                "DISAGREES": "**DISAGREES**",
+                "indeterminate": "_indeterminate_",
+            }.get(str(raw), str(raw))
             lineup = "yes" if row.get("is_lineup") else ""
-            out.append(
-                f"| `{name}` | {_fmt(row.get('value'), '+.4f')} | {expected} | "
-                f"{verdict} | {lineup} |"
-            )
+            if has_errors:
+                error = row.get("standard_error")
+                interval = row.get("ci95")
+                error_cell = "--" if error is None else _fmt(error, ".4f")
+                if isinstance(interval, list) and len(interval) == 2:
+                    interval_cell = f"{interval[0]:+.4f} to {interval[1]:+.4f}"
+                else:
+                    interval_cell = "--"
+                out.append(
+                    f"| `{name}` | {_fmt(row.get('value'), '+.4f')} | {error_cell} | "
+                    f"{interval_cell} | {expected} | {verdict} | {lineup} |"
+                )
+            else:
+                out.append(
+                    f"| `{name}` | {_fmt(row.get('value'), '+.4f')} | {expected} | "
+                    f"{verdict} | {lineup} |"
+                )
         out.append("")
 
     if within:

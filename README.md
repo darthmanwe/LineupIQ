@@ -317,10 +317,9 @@ fitted**. The audit below reports how many came out that way, and it is not a cl
 | **full - conditional logit + lineup (served)** | 1.67283 | 0.3650 | 0.60630 | 0.02973 | +0.073% vs S2 |
 | **full - GBDT + lineup (unconstrained)** | 1.64092 | 0.3865 | 0.59708 | 0.03333 | +0.092% vs S3 |
 
-**Pre-registered sign audit -- 9/10 agree.** Each coefficient's
-direction was written down in the source before the model was fitted, so a term
-that improves log loss while pointing the wrong way cannot be presented as
-confirmation of the thing it was named after.
+**Pre-registered sign audit -- 9/10 agree, 1 disagree.** Each coefficient's direction was written down in the source before
+the model was fitted, so a term that improves log loss while pointing the wrong
+way cannot be presented as confirmation of the thing it was named after.
 
 | Term | Coefficient | Expected | Verdict | Lineup term |
 |---|---|---|---|---|
