@@ -549,6 +549,16 @@ request time, as a closed form over per-player vectors.
 That constraint has a price, and the price is measured and published in the results table
 above rather than absorbed silently.
 
+## Reading this repository
+
+[**STUDY_GUIDE.md**](STUDY_GUIDE.md) is the guided tour: every design decision and the
+alternative it rejected, the data-engineering findings in the order they were found, what the
+ML actually does, a table of **every bug I found in my own published numbers**, and a file-by-file
+walkthrough with a spoken script.
+
+Start there if you want the reasoning. Start with [`docs/modeling.md`](docs/modeling.md) if
+you want the corrections with their magnitudes.
+
 ## Quickstart
 
 No API key. No network after the first build. No Cloudflare account. No Snowflake account.
