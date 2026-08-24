@@ -993,24 +993,22 @@ report renderer is pure ASCII.
 
 **What I would do next, in order:**
 
-1. **Standard errors on the selection coefficients.** This is first because it is what blocks
-   the remaining endpoints, and because the sign audit currently cannot say the most useful
-   thing. `spacing_min_x_three` fitted at +0.097 and `live_ball_x_rim` at +0.087; both are
-   recorded as "agrees", and neither is plausibly distinguishable from zero at this sample.
-   A pre-registration audit that cannot separate _agrees_ from _cannot tell_ is weaker than
-   it looks.
+1. **Report the standard errors on the front page, and retire a claim I made about them.**
+   They are now fitted and served, and they contradicted my own expectation: I built the
+   `indeterminate` verdict expecting `spacing_min_x_three` (+0.097) and `live_ball_x_rim`
+   (+0.087) to fall into it, and **nothing did** — the smallest `|z|` in the model is 4.0.
+   At 671,251 attempts against twenty parameters there is an enormous amount of evidence
+   about each one. I had confused a coefficient's size with its precision.
 
-   The mechanics are settled: the analytic gradient already exists and is finite-difference
-   checked, so the observed information is twenty gradient evaluations away, and the L2 term
-   means the right quantity is the ridge sandwich `H⁻¹ I H⁻¹` — the same estimator RAPM
-   already uses, for the same reason. It is deliberately not half-built: it changes the run
-   log, so it needs a refit to land, and landing a field that is present in the code and
-   absent from the committed baseline is worse than not starting.
+   What remains is presentational and worth doing: the intervals belong beside the priced
+   effect in the README, because together they make the point neither makes alone —
+   **every term is overwhelmingly significant and the whole effect is worth 0.19 points
+   per 100 attempts.** Those are the same fact from two sides, and a reader given only
+   the first will draw the wrong conclusion.
 
-   It also unblocks `/lineups/optimal-plays`. That route's whole point is refusing to rank
-   two actions whose intervals overlap, and **without standard errors the threshold would be
-   a number I made up** — which is the one thing this project is built not to do. So the
-   route stays at `501`.
+   It also unblocks `/lineups/optimal-plays`, whose whole point is refusing to rank two
+   actions whose intervals overlap. With the covariance in hand the overlap threshold is
+   derived rather than chosen, so that route can now be built honestly.
 
 2. **A minutes model.** The trade projection's biggest weakness is not the player estimates —
    it is that minutes are assumed. But the variance decomposition says minutes carry only

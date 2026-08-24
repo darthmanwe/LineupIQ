@@ -1,4 +1,4 @@
-commit: 525671cd8b346c563b2f7ef06ea2e77e4f0280d7
+commit: f4878f292b3f78be253d32810bc9ca6df7f5d80e
 runner: Linux X64
 python: 3.12.3 x86_64
 polars: 1.43.2

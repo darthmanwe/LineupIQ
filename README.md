@@ -300,10 +300,10 @@ fitted**. The audit below reports how many came out that way, and it is not a cl
 | Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
 |---|---|---|---|---|---|
 | S0 - league zone mix | 1.79948 | 0.2939 | 0.67106 | 0.00036 |  |
-| S1 - shooter's own shrunk mix (lookup table) | 1.65907 | 0.3701 | 0.59577 | 0.03094 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.65907 | 0.3701 | 0.59577 | 0.03092 |  |
 | S2 - conditional logit, no lineup | 1.65248 | 0.3712 | 0.59472 | 0.03140 |  |
 | S3 - multiclass GBDT, no lineup | 1.61532 | 0.3951 | 0.58345 | 0.03597 |  |
-| **full - conditional logit + lineup (served)** | 1.65113 | 0.3718 | 0.59360 | 0.03184 | +0.082% vs S2 |
+| **full - conditional logit + lineup (served)** | 1.65113 | 0.3718 | 0.59360 | 0.03185 | +0.082% vs S2 |
 | **full - GBDT + lineup (unconstrained)** | 1.61400 | 0.3954 | 0.58342 | 0.03596 | +0.082% vs S3 |
 
 **Walk-forward -- later games** -- n = 403,797 attempts
@@ -321,18 +321,27 @@ fitted**. The audit below reports how many came out that way, and it is not a cl
 the model was fitted, so a term that improves log loss while pointing the wrong
 way cannot be presented as confirmation of the thing it was named after.
 
-| Term | Coefficient | Expected | Verdict | Lineup term |
-|---|---|---|---|---|
-| `into_possession_x_rim` | -0.3691 | - | agrees |  |
-| `live_ball_x_rim` | +0.0871 | + | agrees |  |
-| `opp_rim_allowed_x_rim` | +1.4822 | + | agrees | yes |
-| `opp_three_allowed_x_three` | +1.7604 | + | agrees | yes |
-| `second_chance_x_rim` | +0.2529 | + | agrees |  |
-| `shooter_mix` | +0.9958 | + | agrees |  |
-| `spacing_min_x_three` | +0.0968 | + | agrees | yes |
-| `spacing_x_three` | -0.4740 | + | **DISAGREES** | yes |
-| `team_mix` | +0.3420 | + | agrees |  |
-| `teammate_rim_x_rim` | -0.6780 | - | agrees | yes |
+**Indeterminate is a third verdict, not a rounding of the other two.** A
+coefficient whose 95% interval spans zero has neither confirmed nor
+contradicted its pre-registered sign, and counting it as agreement would be
+the same error as reading a null result as a refutation. Intervals come from
+the ridge sandwich `H^-1 I H^-1` over the observed information, which is the
+right estimator for a penalised fit and the same one RAPM uses.
+
+**Nothing landed there.** The smallest `|z|` in the model is 4.0: at 671,251 attempts against twenty parameters there is an enormous amount of evidence about each one, and even a coefficient of +0.09 sits several standard errors from zero. Two things follow. The pre-registered failure below is not a marginal call -- it is ten and a half standard errors the wrong way. And **significance says nothing about magnitude**: every term here is overwhelmingly significant while the whole effect is worth a standard deviation of 0.19 points per 100 attempts. Those are the same fact from two sides, and reporting only the first is how a p-value becomes an overclaim.
+
+| Term | Coefficient | Std. error | 95% interval | Expected | Verdict | Lineup term |
+|---|---|---|---|---|---|---|
+| `into_possession_x_rim` | -0.3691 | 0.0048 | -0.3785 to -0.3597 | - | agrees |  |
+| `live_ball_x_rim` | +0.0871 | 0.0062 | +0.0749 to +0.0992 | + | agrees |  |
+| `opp_rim_allowed_x_rim` | +1.4821 | 0.0468 | +1.3904 to +1.5739 | + | agrees | yes |
+| `opp_three_allowed_x_three` | +1.7604 | 0.0531 | +1.6564 to +1.8645 | + | agrees | yes |
+| `second_chance_x_rim` | +0.2529 | 0.0063 | +0.2406 to +0.2653 | + | agrees |  |
+| `shooter_mix` | +0.9958 | 0.0028 | +0.9903 to +1.0014 | + | agrees |  |
+| `spacing_min_x_three` | +0.0968 | 0.0243 | +0.0491 to +0.1444 | + | agrees | yes |
+| `spacing_x_three` | -0.4740 | 0.0453 | -0.5629 to -0.3852 | + | **DISAGREES** | yes |
+| `team_mix` | +0.3420 | 0.0098 | +0.3228 to +0.3611 | + | agrees |  |
+| `teammate_rim_x_rim` | -0.6780 | 0.0414 | -0.7593 to -0.5968 | - | agrees | yes |
 
 **Within-shooter refit.** The lineup aggregates are anti-correlated with a
 shooter's own tendencies by roster construction -- put four shooters on the floor
@@ -343,7 +352,7 @@ spacing than he usually has.
 
 | Term | Headline | Within shooter |
 |---|---|---|
-| `opp_rim_allowed_x_rim` | +1.4822 | +1.4826 |
+| `opp_rim_allowed_x_rim` | +1.4821 | +1.4826 |
 | `opp_three_allowed_x_three` | +1.7604 | +1.7941 |
 | `spacing_min_x_three` | +0.0968 | +0.0615 |
 | `spacing_x_three` | -0.4740 | -0.4470 |
@@ -351,7 +360,7 @@ spacing than he usually has.
 
 **Negative control.** With the five-man lineups randomly reassigned across attempts, the full model's log-loss gain over S2 is -0.000015 and the `spacing_x_three` coefficient collapses to -0.0169. The second number is the one worth having: a pooled metric can go flat while a coefficient stays large, and this model's claim is directional, so the coefficient is what has to die under shuffling.
 
-_Generated from run `525671c` on Linux, seed 20260815, 671,251 attempts across 3 seasons._
+_Generated from run `f4878f2` on Linux, seed 20260815, 671,251 attempts across 3 seasons._
 <!-- lineupiq:end id=results.selection -->
 
 ### What the effect is worth

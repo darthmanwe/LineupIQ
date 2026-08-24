@@ -1,0 +1,399 @@
+{
+  "controls": {
+    "shuffled_lineup_logloss_gain": -1.4995884474400256e-05,
+    "shuffled_lineup_spacing_coefficient": -0.016871420454969012
+  },
+  "created_at": "2026-08-24T18:51:45+00:00",
+  "git_dirty": true,
+  "git_sha": "f4878f2",
+  "metrics": {
+    "leave_lineup_out": {
+      "S0": {
+        "classwise_ece": 0.00495761228108298,
+        "log_loss": 1.7994838850162778,
+        "n": 405464.0,
+        "rim_brier": 0.24967939032512323,
+        "rim_log_loss": 0.692505841933722,
+        "rim_resolution": 0.00023867135598876668,
+        "three_brier": 0.23903598429882938,
+        "three_ece": 0.017066827329915484,
+        "three_log_loss": 0.6710577080871433,
+        "three_resolution": 0.0003569666305037473,
+        "top1_accuracy": 0.2939373162598899
+      },
+      "S1": {
+        "classwise_ece": 0.0038984938255417143,
+        "log_loss": 1.6590691667487745,
+        "n": 405464.0,
+        "rim_brier": 0.21776800095106796,
+        "rim_log_loss": 0.6202589290269012,
+        "rim_resolution": 0.03173532176905374,
+        "three_brier": 0.20788149390523059,
+        "three_ece": 0.008579391075279294,
+        "three_log_loss": 0.5957672535230438,
+        "three_resolution": 0.030919057930252434,
+        "top1_accuracy": 0.3700969753171675
+      },
+      "S2": {
+        "classwise_ece": 0.004765982224199053,
+        "log_loss": 1.6524752660885673,
+        "n": 405464.0,
+        "rim_brier": 0.21656323542188305,
+        "rim_log_loss": 0.6175369001767139,
+        "rim_resolution": 0.03294471353998397,
+        "three_brier": 0.2074387305494071,
+        "three_ece": 0.009511014470554984,
+        "three_log_loss": 0.594722214727522,
+        "three_resolution": 0.03139735326806875,
+        "top1_accuracy": 0.3712339443205809
+      },
+      "S3": {
+        "classwise_ece": 0.0035817217453190174,
+        "log_loss": 1.6153202528384356,
+        "n": 405464.0,
+        "rim_brier": 0.2117118065341287,
+        "rim_log_loss": 0.6061074942749451,
+        "rim_resolution": 0.03779343522061996,
+        "three_brier": 0.2028962077222933,
+        "three_ece": 0.008671309972731564,
+        "three_log_loss": 0.5834521581666136,
+        "three_resolution": 0.03596654850197615,
+        "top1_accuracy": 0.39509796184124857
+      },
+      "full": {
+        "classwise_ece": 0.00473589435193081,
+        "log_loss": 1.651126393377458,
+        "n": 405464.0,
+        "rim_brier": 0.21602575810211172,
+        "rim_log_loss": 0.61635312733365,
+        "rim_resolution": 0.033474413101637575,
+        "three_brier": 0.20694886249164385,
+        "three_ece": 0.007615441742337945,
+        "three_log_loss": 0.5935954496142519,
+        "three_resolution": 0.03184525484231843,
+        "top1_accuracy": 0.37177159994475467
+      },
+      "full_gbdt": {
+        "classwise_ece": 0.0032560638263893034,
+        "log_loss": 1.6139984188105685,
+        "n": 405464.0,
+        "rim_brier": 0.21172721584849355,
+        "rim_log_loss": 0.6062238964522075,
+        "rim_resolution": 0.03773892805531249,
+        "three_brier": 0.2028204653459069,
+        "three_ece": 0.006915784417063127,
+        "three_log_loss": 0.5834224413909915,
+        "three_resolution": 0.03595903170992152,
+        "top1_accuracy": 0.395376654894146
+      }
+    },
+    "walk_forward": {
+      "S0": {
+        "classwise_ece": 0.006036984864179438,
+        "log_loss": 1.801049931887538,
+        "n": 403797.0,
+        "rim_brier": 0.24997446335977475,
+        "rim_log_loss": 0.6930962857189382,
+        "rim_resolution": 8.965989959221191e-05,
+        "three_brier": 0.2418786656620537,
+        "three_ece": 0.01871137439481975,
+        "three_log_loss": 0.6768322029718535,
+        "three_resolution": 0.00013913696033758473,
+        "top1_accuracy": 0.28483123945943134
+      },
+      "S1": {
+        "classwise_ece": 0.007416463279890778,
+        "log_loss": 1.6796257378374795,
+        "n": 403797.0,
+        "rim_brier": 0.2200483395107639,
+        "rim_log_loss": 0.6260931031010571,
+        "rim_resolution": 0.029896747778954257,
+        "three_brier": 0.2127578834270775,
+        "three_ece": 0.01884965689769467,
+        "three_log_loss": 0.6081005672663475,
+        "three_resolution": 0.02895372640771078,
+        "top1_accuracy": 0.36415079854481336
+      },
+      "S2": {
+        "classwise_ece": 0.007831856260985405,
+        "log_loss": 1.6740569727823504,
+        "n": 403797.0,
+        "rim_brier": 0.21913054191286457,
+        "rim_log_loss": 0.6239756166452328,
+        "rim_resolution": 0.030793899157144033,
+        "three_brier": 0.2123927902077147,
+        "three_ece": 0.01747412132922964,
+        "three_log_loss": 0.6073120870841013,
+        "three_resolution": 0.029358208166317665,
+        "top1_accuracy": 0.36478973345517673
+      },
+      "S3": {
+        "classwise_ece": 0.006265624883727608,
+        "log_loss": 1.6424344990640494,
+        "n": 403797.0,
+        "rim_brier": 0.21455128263281176,
+        "rim_log_loss": 0.6134315646143884,
+        "rim_resolution": 0.035137070547597425,
+        "three_brier": 0.2080175979981611,
+        "three_ece": 0.011697975204928133,
+        "three_log_loss": 0.5967767272980082,
+        "three_resolution": 0.033481128160254385,
+        "top1_accuracy": 0.38614947609813843
+      },
+      "full": {
+        "classwise_ece": 0.007751415339535737,
+        "log_loss": 1.672831301081763,
+        "n": 403797.0,
+        "rim_brier": 0.2187106534570045,
+        "rim_log_loss": 0.6230841803851634,
+        "rim_resolution": 0.031173172796943743,
+        "three_brier": 0.21193361516184095,
+        "three_ece": 0.016265951322943412,
+        "three_log_loss": 0.6063012013590586,
+        "three_resolution": 0.029732429731098034,
+        "top1_accuracy": 0.36498042333152547
+      },
+      "full_gbdt": {
+        "classwise_ece": 0.006216510392041015,
+        "log_loss": 1.6409176180396556,
+        "n": 403797.0,
+        "rim_brier": 0.21469280044638822,
+        "rim_log_loss": 0.6137690101442521,
+        "rim_resolution": 0.035045413293555275,
+        "three_brier": 0.20813366328629732,
+        "three_ece": 0.011397263433813002,
+        "three_log_loss": 0.5970762413367118,
+        "three_resolution": 0.03333253609470535,
+        "top1_accuracy": 0.38652094988323343
+      }
+    }
+  },
+  "model": {
+    "coefficients": [
+      -0.25728165947672216,
+      -1.7857947610739782,
+      -3.454379154888071,
+      -2.259178813565874,
+      -1.5764932922125616,
+      -1.6574505875651813,
+      -1.468499566476334,
+      -0.1038612514542163,
+      0.9958449712301081,
+      0.3419644854056752,
+      -0.3690834080257137,
+      -0.3246597608177753,
+      0.08708478097689759,
+      0.25292091683328516,
+      0.06339924903108916,
+      -0.47403985800300164,
+      0.09676449186105636,
+      -0.6780393010750289,
+      1.4821266759194582,
+      1.7604205030728688
+    ],
+    "converged": true,
+    "l2": 0.0001,
+    "n_iterations": 169,
+    "observed_mix": {
+      "corner_three_left": 0.05389936104378243,
+      "corner_three_right": 0.049689311449815345,
+      "mid_baseline": 0.04691836585718308,
+      "mid_top": 0.029252842826304915,
+      "mid_wing": 0.008865536140728282,
+      "paint_non_ra": 0.22459854808409968,
+      "restricted_area": 0.2905455634330526,
+      "top_three": 0.23584173431398986,
+      "wing_three": 0.060388736851043796
+    },
+    "shooter_prior_strength": 11.017472592461147,
+    "sign_audit": {
+      "into_possession_x_rim": {
+        "ci95": [
+          -0.378483785204888,
+          -0.3596830308465394
+        ],
+        "expected_sign": -1,
+        "is_lineup": false,
+        "standard_error": 0.004796110805701162,
+        "value": -0.3690834080257137,
+        "verdict": "agrees",
+        "z": -76.95472914991504
+      },
+      "live_ball_x_rim": {
+        "ci95": [
+          0.0749235122866873,
+          0.09924604966710789
+        ],
+        "expected_sign": 1,
+        "is_lineup": false,
+        "standard_error": 0.006204728923576679,
+        "value": 0.08708478097689759,
+        "verdict": "agrees",
+        "z": 14.03522733217136
+      },
+      "opp_rim_allowed_x_rim": {
+        "ci95": [
+          1.3903781468035976,
+          1.5738752050353189
+        ],
+        "expected_sign": 1,
+        "is_lineup": true,
+        "standard_error": 0.04681047403870437,
+        "value": 1.4821266759194582,
+        "verdict": "agrees",
+        "z": 31.662287262760668
+      },
+      "opp_three_allowed_x_three": {
+        "ci95": [
+          1.656364974961437,
+          1.8644760311843005
+        ],
+        "expected_sign": 1,
+        "is_lineup": true,
+        "standard_error": 0.05308955515889373,
+        "value": 1.7604205030728688,
+        "verdict": "agrees",
+        "z": 33.15945100319715
+      },
+      "second_chance_x_rim": {
+        "ci95": [
+          0.24055687228683875,
+          0.26528496137973157
+        ],
+        "expected_sign": 1,
+        "is_lineup": false,
+        "standard_error": 0.006308185993084903,
+        "value": 0.25292091683328516,
+        "verdict": "agrees",
+        "z": 40.0940804710799
+      },
+      "shooter_mix": {
+        "ci95": [
+          0.9902894339361044,
+          1.0014005085241118
+        ],
+        "expected_sign": 1,
+        "is_lineup": false,
+        "standard_error": 0.0028344578030631384,
+        "value": 0.9958449712301081,
+        "verdict": "agrees",
+        "z": 351.33526071685367
+      },
+      "spacing_min_x_three": {
+        "ci95": [
+          0.04912658413975294,
+          0.1444023995823598
+        ],
+        "expected_sign": 1,
+        "is_lineup": true,
+        "standard_error": 0.024305054959848683,
+        "value": 0.09676449186105636,
+        "verdict": "agrees",
+        "z": 3.9812496627104434
+      },
+      "spacing_x_three": {
+        "ci95": [
+          -0.5628729195244364,
+          -0.3852067964815668
+        ],
+        "expected_sign": 1,
+        "is_lineup": true,
+        "standard_error": 0.045322990572160625,
+        "value": -0.47403985800300164,
+        "verdict": "DISAGREES",
+        "z": -10.45914781921248
+      },
+      "team_mix": {
+        "ci95": [
+          0.32279519483044417,
+          0.36113377598090624
+        ],
+        "expected_sign": 1,
+        "is_lineup": false,
+        "standard_error": 0.009780250293485216,
+        "value": 0.3419644854056752,
+        "verdict": "agrees",
+        "z": 34.96479897180784
+      },
+      "teammate_rim_x_rim": {
+        "ci95": [
+          -0.7592689678968001,
+          -0.5968096342532576
+        ],
+        "expected_sign": -1,
+        "is_lineup": true,
+        "standard_error": 0.041443707562128215,
+        "value": -0.6780393010750289,
+        "verdict": "agrees",
+        "z": -16.36048850259309
+      }
+    },
+    "standard_errors": [
+      0.003514370855335158,
+      0.006898627979004088,
+      0.013602026397329827,
+      0.00822874015722231,
+      0.008709407352970695,
+      0.008842637386991216,
+      0.008539434470434917,
+      0.0073225591884709855,
+      0.0028344578030631384,
+      0.009780250293485216,
+      0.004796110805701162,
+      0.004632713320108421,
+      0.006204728923576679,
+      0.006308185993084903,
+      0.00895148518133783,
+      0.045322990572160625,
+      0.024305054959848683,
+      0.041443707562128215,
+      0.04681047403870437,
+      0.05308955515889373
+    ],
+    "team_prior_strength": 233.00276212004354,
+    "term_names": [
+      "alt_paint_non_ra",
+      "alt_mid_baseline",
+      "alt_mid_wing",
+      "alt_mid_top",
+      "alt_corner_three_left",
+      "alt_corner_three_right",
+      "alt_wing_three",
+      "alt_top_three",
+      "shooter_mix",
+      "team_mix",
+      "into_possession_x_rim",
+      "into_possession_x_three",
+      "live_ball_x_rim",
+      "second_chance_x_rim",
+      "clutch_x_three",
+      "spacing_x_three",
+      "spacing_min_x_three",
+      "teammate_rim_x_rim",
+      "opp_rim_allowed_x_rim",
+      "opp_three_allowed_x_three"
+    ],
+    "within_shooter_coefficients": {
+      "opp_rim_allowed_x_rim": 1.4826431041553854,
+      "opp_three_allowed_x_three": 1.7940715702661258,
+      "spacing_min_x_three": 0.061527742433907934,
+      "spacing_x_three": -0.44697146448103753,
+      "teammate_rim_x_rim": -0.7114163285787385
+    }
+  },
+  "n_lineups": 45005,
+  "n_shots": 671251,
+  "notes": [
+    "walk_forward: 4 folds",
+    "leave_lineup_out: 5 folds",
+    "sign audit: 9/10 agree; DISAGREES: spacing_x_three"
+  ],
+  "platform": "Linux",
+  "python": "3.12.3",
+  "seasons": [
+    2022,
+    2023,
+    2024
+  ],
+  "seed": 20260815
+}

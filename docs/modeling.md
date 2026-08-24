@@ -83,6 +83,74 @@ directions is a sign the parameterisation is doing real work.
 
 The pre-registered expectation was wrong. It stays in the source as written.
 
+### Standard errors, a third verdict, and a prediction of mine that was wrong
+
+The audit could originally say two things: *agrees* or *DISAGREES*. That is weaker than it
+looks, because a coefficient of +0.097 whose interval spans zero would be recorded as agreeing
+with a positive prediction while agreeing with nothing at all. So the served fit now carries a
+covariance, and a coefficient whose 95% interval spans zero is **indeterminate** — counted as
+neither, which can only make the audit harder to pass.
+
+**I built it expecting two terms to fall into that bucket, and neither did.** The reasoning was
+that `spacing_min_x_three` at +0.097 and `live_ball_x_rim` at +0.087 are small, so they were
+probably not distinguishable from zero. That confuses a coefficient's *size* with its
+*precision*:
+
+| Term                        | Coefficient |     SE |     z | Verdict |
+| --------------------------- | ----------- | ------ | ----- | ------- |
+| `shooter_mix`               |     +0.9958 | 0.0028 | 351.3 | agrees  |
+| `into_possession_x_rim`     |     −0.3691 | 0.0048 | −77.0 | agrees  |
+| `second_chance_x_rim`       |     +0.2529 | 0.0063 |  40.1 | agrees  |
+| `team_mix`                  |     +0.3420 | 0.0098 |  35.0 | agrees  |
+| `opp_three_allowed_x_three` |     +1.7604 | 0.0531 |  33.2 | agrees  |
+| `opp_rim_allowed_x_rim`     |     +1.4821 | 0.0468 |  31.7 | agrees  |
+| `teammate_rim_x_rim`        |     −0.6780 | 0.0414 | −16.4 | agrees  |
+| `live_ball_x_rim`           |     +0.0871 | 0.0062 |  14.0 | agrees  |
+| `spacing_x_three`           |     −0.4740 | 0.0453 | −10.5 | **DISAGREES** |
+| `spacing_min_x_three`       |     +0.0968 | 0.0243 |   4.0 | agrees  |
+
+Nothing is indeterminate. The smallest `|z|` in the model is 4.0. At 671,251 attempts against
+twenty parameters there is simply an enormous amount of evidence about each one, and a
+coefficient of +0.087 sits fourteen standard errors from zero.
+
+Two things follow, and they are the reason this was worth building even though the bucket came
+back empty.
+
+**The pre-registration failure is not a marginal call.** `spacing_x_three` is ten and a half
+standard errors below zero. It was not a coefficient that wandered across the axis; the
+hypothesis is decisively wrong in the stated direction.
+
+**And significance says nothing about magnitude.** Every coefficient here is overwhelmingly
+significant, and the whole shot-mix effect is still worth a standard deviation of 0.19 points
+per 100 attempts. Those two facts are not in tension — they are the same fact seen from two
+sides, and reporting only the first is how a p-value becomes an overclaim. The pricing table
+is the honest companion to this one, and neither should be read alone.
+
+The estimator is the **ridge sandwich** `H⁻¹ I H⁻¹`, not the inverse Hessian. The fit is
+penalised (`l2 = 1e-4` on the non-constant terms), so a plain inverse would describe a
+different estimator than the one that produced these numbers — shrinkage trades bias for
+variance and the sandwich accounts for both sides. RAPM in this repository already uses it, for
+the same reason.
+
+`I` comes from central differences on the **analytic** gradient rather than second differences
+of the loss: `2p` evaluations instead of `2p²`, keeping the significant digits the other route
+throws away. The L2 term is removed arithmetically — its gradient is exactly `l2 · mask · θ` —
+rather than through a second code path that could drift from the optimiser's. The result is
+symmetrised, because finite differences are symmetric only to truncation error and an
+asymmetric Hessian produces negative variances that surface as a nan much later and look like
+a data problem. It is computed on the served fit only; cross-validation fits this model
+eighteen times per pass and none of those needs a covariance.
+
+**None of the six tests asserts a value.** A covariance never raises, and one wrong by a factor
+of two still looks like a standard error. So they assert properties instead: the
+finite-difference Hessian agrees with a second-difference Hessian of the loss, an independent
+route sharing no code beyond the objective; the standard errors shrink as `1/√n`, which fails
+by orders of magnitude if the `1/n` is missing or applied twice; the covariance is symmetric
+and positive definite; and on random data, where every lineup coefficient is truly zero, the
+audit returns `indeterminate` rather than crediting whichever sign the noise produced. That
+last test is why the empty bucket here can be trusted as a finding rather than suspected as a
+bug.
+
 ---
 
 ## Corrections to the possession layer

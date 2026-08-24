@@ -363,13 +363,31 @@ def _selection_results(ctx: RenderContext) -> str:
             out += [
                 "",
                 "**Indeterminate is a third verdict, not a rounding of the other two.** A",
-                "coefficient whose 95% interval spans zero has not confirmed its",
-                "pre-registered sign and has not contradicted it -- the data cannot tell, and",
-                "counting it as agreement would be the same error as reading a null result as",
-                "a refutation. Intervals come from the ridge sandwich `H^-1 I H^-1` over the",
-                "observed information, which is the right estimator for a penalised fit and",
-                "the same one RAPM uses.",
+                "coefficient whose 95% interval spans zero has neither confirmed nor",
+                "contradicted its pre-registered sign, and counting it as agreement would be",
+                "the same error as reading a null result as a refutation. Intervals come from",
+                "the ridge sandwich `H^-1 I H^-1` over the observed information, which is the",
+                "right estimator for a penalised fit and the same one RAPM uses.",
             ]
+            if unknown == 0:
+                smallest = min(
+                    (abs(float(row["z"])) for row in audit.values() if row.get("z") is not None),
+                    default=float("nan"),
+                )
+                out += [
+                    "",
+                    f"**Nothing landed there.** The smallest `|z|` in the model is "
+                    f"{smallest:.1f}: at {int(run.get('n_shots') or 0):,} attempts against "
+                    "twenty parameters there is an enormous amount of evidence about each "
+                    "one, and even a coefficient of +0.09 sits several standard errors from "
+                    "zero. Two things follow. The pre-registered failure below is not a "
+                    "marginal call -- it is ten and a half standard errors the wrong way. "
+                    "And **significance says nothing about magnitude**: every term here is "
+                    "overwhelmingly significant while the whole effect is worth a standard "
+                    "deviation of 0.19 points per 100 attempts. Those are the same fact from "
+                    "two sides, and reporting only the first is how a p-value becomes an "
+                    "overclaim.",
+                ]
         out += [
             "",
             (
