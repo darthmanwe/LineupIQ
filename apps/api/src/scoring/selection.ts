@@ -29,6 +29,8 @@ export type SelectionProfiles = {
   rim: number[];
   three: number[];
   league_mix: number[];
+  /** League points per attempt, in `zones` order. */
+  zone_points: number[];
   shooter_log_ratio: Record<string, number[]>;
   shooter_weight: Record<string, number>;
   team_log_ratio: Record<string, number[]>;
@@ -69,6 +71,20 @@ export type ScoreResult = {
   utilities: number[];
   shooterKnown: boolean;
   shooterWeight: number;
+  /**
+   * The shot-mix shift, priced in points per 100 attempts.
+   *
+   * `sum(deltaShare * leaguePointsPerAttempt) * 100`. This is the number the
+   * product is about: "0.27 percentage points more corner threes" is not
+   * something anyone can act on, and this is the same fact in units that are.
+   *
+   * Priced at **league** conversion rates, not the shooter's own. That is the
+   * estimand rather than a shortcut — using his rates would fold the two
+   * channels back together, so part of the answer would be "he shoots better
+   * from there" and part "the lineup got him there". At fixed conversion, all of
+   * it is selection.
+   */
+  pointsPer100: number;
 };
 
 function softmax(values: number[]): number[] {
@@ -190,14 +206,27 @@ export function scoreSelection(
   };
 
   const full = utilities(true);
+  const mix = softmax(full);
+  // Every lineup term is a deviation from the league average, so dropping them
+  // *is* the league-average lineup. No second profile is needed.
+  const baselineMix = softmax(utilities(false));
+
+  // Written out rather than composed, for the same reason `meanRate` is: the
+  // summation order has to match Python's left-to-right `sum()` exactly, or the
+  // parity fixture fails in the last few bits.
+  let points = 0;
+  for (let z = 0; z < nZones; z += 1) {
+    const value = profiles.zone_points[z] ?? 0;
+    points += ((mix[z] as number) - (baselineMix[z] as number)) * value;
+  }
+
   return {
     zones,
-    mix: softmax(full),
-    // Every lineup term is a deviation from the league average, so dropping
-    // them *is* the league-average lineup. No second profile is needed.
-    baselineMix: softmax(utilities(false)),
+    mix,
+    baselineMix,
     utilities: full,
     shooterKnown,
     shooterWeight,
+    pointsPer100: 100 * points,
   };
 }

@@ -290,6 +290,7 @@ def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
                 "baseline_mix": list(result.baseline_mix),
                 "shooter_known": result.shooter_known,
                 "shooter_weight": result.shooter_weight,
+                "points_per_100": result.points_per_100,
             }
         )
 

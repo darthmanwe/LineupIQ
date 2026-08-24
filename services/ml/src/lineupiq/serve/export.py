@@ -437,6 +437,27 @@ def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
 
     league = np.log(np.maximum(profiles.league_mix, 1e-12))
 
+    # League points per attempt by zone, so the Worker can price a shot-mix
+    # shift without a second asset.
+    #
+    # **League values, not the shooter's own, and that is the estimand rather
+    # than a shortcut.** Pricing the shift at this shooter's conversion rates
+    # would fold the two channels back together -- part of the answer would be
+    # "he shoots better from there" and part "the lineup got him there" -- and
+    # separating those is the entire point of having two models. At fixed league
+    # conversion, the whole difference is selection.
+    #
+    # It also happens to cost nothing in accuracy: the conversion model found no
+    # measurable lineup effect (+0.019% log loss on unseen combinations), so zone
+    # value is, as far as this data can tell, lineup-independent.
+    zone_points = {
+        str(row[0]): _round(row[1])
+        for row in shots.group_by("zone_id")
+        .agg((pl.col("made") * pl.col("shot_points")).mean().alias("ppa"))
+        .sort("zone_id")
+        .iter_rows()
+    }
+
     def log_ratio(mix: np.ndarray) -> list[float]:
         return [_round(v) for v in (np.log(np.maximum(mix, 1e-12)) - league)]
 
@@ -449,6 +470,8 @@ def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
         "rim": [float(v) for v in zone_attribute("rim")],
         "three": [float(v) for v in zone_attribute("three")],
         "league_mix": [_round(v) for v in profiles.league_mix],
+        # In ZONE_IDS order, so the scorer can zip it against a mix vector.
+        "zone_points": [zone_points.get(zone, 0.0) for zone in ZONE_IDS],
         "shooter_log_ratio": {
             str(pid): log_ratio(mix) for pid, mix in sorted(profiles.shooter_mix.items())
         },

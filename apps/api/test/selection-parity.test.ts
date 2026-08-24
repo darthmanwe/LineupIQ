@@ -42,6 +42,7 @@ type Case = {
   baseline_mix: number[];
   shooter_known: boolean;
   shooter_weight: number;
+  points_per_100: number;
 };
 
 type Fixture = {
@@ -152,6 +153,36 @@ describe("selection scorer parity", () => {
           `case ${i} zone ${fixture.zones[z]}`
         ).toBeLessThan(TOLERANCE);
       });
+    });
+  });
+
+  it("reproduces the priced shift to 1e-9", () => {
+    // The headline number, and the one most likely to drift silently: it is a
+    // dot product of two vectors that both come from the same softmax, so an
+    // error in either shows up here and nowhere a reader would notice.
+    let worst = 0;
+    fixture.cases.forEach((c) => {
+      const result = score(c);
+      worst = Math.max(worst, Math.abs(result.pointsPer100 - c.points_per_100));
+    });
+    expect(worst).toBeLessThan(TOLERANCE);
+  });
+
+  it("prices a league-average lineup at exactly zero", () => {
+    // Every lineup term is a deviation from the league mean, so a lineup that
+    // is average on all five of them must move nothing. If this drifted, the
+    // baseline the product measures against would be wrong and every delta with
+    // it -- while the absolute predictions stayed correct.
+    fixture.cases.forEach((c) => {
+      const result = score(c);
+      const restated = result.zones.reduce(
+        (a, _z, i) =>
+          a +
+          ((result.mix[i] as number) - (result.baselineMix[i] as number)) *
+            (profiles.zone_points[i] ?? 0),
+        0
+      );
+      expect(Math.abs(100 * restated - result.pointsPer100)).toBeLessThan(TOLERANCE);
     });
   });
 

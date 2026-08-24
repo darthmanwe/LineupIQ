@@ -79,6 +79,19 @@ class ScoreResult:
     #: How much of the shooter's mix is evidence rather than prior, from the
     #: Dirichlet-multinomial shrinkage. Low means the answer is mostly a prior.
     shooter_weight: float
+    #: The shot-mix shift, priced in points per 100 attempts.
+    #:
+    #: ``sum(delta_share * league_points_per_attempt)``, scaled by 100. This is
+    #: the number the product is actually about -- "0.27 percentage points more
+    #: corner threes" is not a quantity anyone can act on, and this is the same
+    #: fact in units that mean something.
+    #:
+    #: Priced at **league** conversion rates rather than the shooter's own, which
+    #: is the estimand and not a shortcut: using his rates would fold the two
+    #: channels back together, so part of the answer would be "he shoots better
+    #: from there" and part "the lineup got him there". At fixed conversion, all
+    #: of it is selection.
+    points_per_100: float
 
 
 def _softmax(values: list[float]) -> list[float]:
@@ -197,13 +210,22 @@ def score_selection(
         return out
 
     full = utilities(with_lineup=True)
+    mix = _softmax(full)
+    baseline = _softmax(utilities(with_lineup=False))
+
+    zone_points: list[float] = [float(v) for v in profiles.get("zone_points", [0.0] * len(zones))]
+    points_per_100 = 100.0 * sum(
+        (m - b) * p for m, b, p in zip(mix, baseline, zone_points, strict=True)
+    )
+
     return ScoreResult(
         zones=tuple(zones),
-        mix=tuple(_softmax(full)),
+        mix=tuple(mix),
         # The lineup terms are all deviations from the league average, so
         # dropping them *is* the league-average lineup. No second profile needed.
-        baseline_mix=tuple(_softmax(utilities(with_lineup=False))),
+        baseline_mix=tuple(baseline),
         utilities=tuple(full),
         shooter_known=shooter_known,
         shooter_weight=shooter_weight,
+        points_per_100=points_per_100,
     )

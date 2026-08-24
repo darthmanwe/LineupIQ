@@ -45,6 +45,8 @@ type ScoreResponse = {
   data: {
     lineup_hash: string;
     shooter: { player_id: string; name: string | null; known: boolean; evidence_weight: number };
+    points_per_100: number | null;
+    points_direction: "gain" | "loss" | "flat";
     zones: ScoreZone[];
   };
   meta: {
@@ -201,6 +203,10 @@ export function LineupScorer({
         .scorer__refusal h3 { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 1rem; }
         .scorer__meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.75rem; font-family: var(--mono, monospace); }
         .scorer__empty { color: var(--muted); font-size: 0.9rem; }
+        .priced { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1rem; margin-bottom: 1rem; }
+        .priced__value { font-family: var(--mono, monospace); font-size: 1.5rem; font-weight: 600; }
+        .priced__unit { color: var(--muted); font-size: 0.85rem; margin-left: 0.35rem; }
+        .priced__note { color: var(--muted); font-size: 0.83rem; margin: 0.4rem 0 0; }
       `}</style>
 
       <div className="scorer__grid">
@@ -281,6 +287,7 @@ export function LineupScorer({
                   `comparable; these effects are much smaller than that, which is the finding.`
                 }
               />
+              <PricedShift result={result} />
               {result.meta.warnings.map((warning) => (
                 <p className="scorer__warn" key={warning}>
                   {warning}
@@ -305,5 +312,52 @@ export function LineupScorer({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The shot-mix shift, in points.
+ *
+ * A hero number, because it is the one quantity a reader can act on — but a
+ * hero number with the thing that makes it honest attached, not in a tooltip.
+ *
+ * Below the reportable possession floor the magnitude is `null` and only the
+ * direction survives. The component renders that as a direction word and no
+ * digits: there is no version of this display that shows a number the API
+ * refused to serve.
+ */
+function PricedShift({ result }: { result: ScoreResponse }): React.ReactElement {
+  const { points_per_100: points, points_direction: direction } = result.data;
+  const name = result.data.shooter.name ?? "this shooter";
+
+  if (points === null) {
+    return (
+      <div className="priced">
+        <div className="priced__value">
+          {direction === "flat" ? "no shift" : direction === "gain" ? "a gain" : "a loss"}
+          <span className="priced__unit">direction only</span>
+        </div>
+        <p className="priced__note">
+          These five have not played enough together to size the effect. The direction is supported;
+          the magnitude is not, so it is not shown.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="priced">
+      <div className="priced__value">
+        {points >= 0 ? "+" : "−"}
+        {Math.abs(points).toFixed(2)}
+        <span className="priced__unit">points per 100 attempts</span>
+      </div>
+      <p className="priced__note">
+        What this lineup is worth to {name} through <em>shot selection alone</em> — the mix shift
+        below, priced at league conversion rates for each zone. League rates and not his own on
+        purpose: using his would fold in &ldquo;he shoots better from there&rdquo; and this number
+        is meant to isolate &ldquo;the lineup got him there&rdquo;.
+      </p>
+    </div>
   );
 }

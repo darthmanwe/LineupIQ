@@ -454,6 +454,13 @@ export function mountLive(app: App): void {
               // value it applies to rather than buried in a model card.
               evidence_weight: result.shooterWeight,
             },
+            // The headline. Nulled below the reportable floor like every other
+            // magnitude, and its sign survives as `points_direction` -- which is
+            // what a directional tier means: the direction is supported, the
+            // size is not.
+            points_per_100: assessment.tier === "reportable" ? result.pointsPer100 : null,
+            points_direction:
+              result.pointsPer100 > 0 ? "gain" : result.pointsPer100 < 0 ? "loss" : "flat",
             zones: result.zones.map((zone, z) => ({
               zone_id: zone,
               // Null when the magnitude is not supported. A caller that renders
