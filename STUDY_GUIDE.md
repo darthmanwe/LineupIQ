@@ -968,13 +968,32 @@ report renderer is pure ASCII.
 
 **What I would do next, in order:**
 
-1. **A minutes model.** The trade projection's biggest weakness is not the player estimates —
+1. **Standard errors on the selection coefficients.** This is first because it is what blocks
+   the remaining endpoints, and because the sign audit currently cannot say the most useful
+   thing. `spacing_min_x_three` fitted at +0.097 and `live_ball_x_rim` at +0.087; both are
+   recorded as "agrees", and neither is plausibly distinguishable from zero at this sample.
+   A pre-registration audit that cannot separate _agrees_ from _cannot tell_ is weaker than
+   it looks.
+
+   The mechanics are settled: the analytic gradient already exists and is finite-difference
+   checked, so the observed information is twenty gradient evaluations away, and the L2 term
+   means the right quantity is the ridge sandwich `H⁻¹ I H⁻¹` — the same estimator RAPM
+   already uses, for the same reason. It is deliberately not half-built: it changes the run
+   log, so it needs a refit to land, and landing a field that is present in the code and
+   absent from the committed baseline is worse than not starting.
+
+   It also unblocks `/lineups/optimal-plays`. That route's whole point is refusing to rank
+   two actions whose intervals overlap, and **without standard errors the threshold would be
+   a number I made up** — which is the one thing this project is built not to do. So the
+   route stays at `501`.
+
+2. **A minutes model.** The trade projection's biggest weakness is not the player estimates —
    it is that minutes are assumed. But the variance decomposition says minutes carry only
    13%, so this is a _correctness_ improvement rather than a precision one.
-2. **More seasons.** Every underpowered result here is underpowered because of sample size.
+3. **More seasons.** Every underpowered result here is underpowered because of sample size.
    RAPM reliability at 0.4 and an MDE of 1.00 both improve with `√n`, and the pipeline is
    already season-parameterised.
-3. **Shot-selection at possession grain.** The selection model conditions on an attempt
+4. **Shot-selection at possession grain.** The selection model conditions on an attempt
    happening. Modelling _whether_ a possession produces an attempt, and where, would close
    the loop to points per possession — which is what the product actually claims.
 

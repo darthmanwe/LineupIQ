@@ -133,13 +133,19 @@ export const ROUTES: readonly RouteSpec[] = [
   {
     method: "POST",
     path: "/lineups/optimal-plays",
-    summary: "Top-k actions ranked by EPSA.",
+    summary: "Top-k actions ranked by their priced contribution.",
     state: "planned",
+    // Blocked on one specific thing, and it is worth naming rather than leaving
+    // as "not done yet". The route's whole point is refusing to order two
+    // actions whose intervals overlap -- and the selection model does not
+    // currently publish standard errors on its coefficients, so the threshold
+    // for "overlap" would be a number chosen to make the output look sensible.
+    // That is the single thing this API is built not to do, so the route waits.
     willServe:
       "A ranked list — or an explicitly unordered set when the intervals overlap, " +
       "because ranking indistinguishable options is a way of lying.",
     milestone: M4,
-    backedBy: "EP_PREDICTIONS plus the refusal rules",
+    backedBy: "the priced shot-mix contribution, once the coefficients carry standard errors",
   },
   {
     method: "POST",
