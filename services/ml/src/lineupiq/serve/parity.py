@@ -20,6 +20,7 @@ The sample deliberately includes the cases that break things:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,11 +33,34 @@ from lineupiq.models.support import Tier, assess, build_lineup_support, load_thr
 from lineupiq.paths import DataPaths
 
 __all__ = [
+    "FLOAT_TOLERANCE",
+    "ParityDrift",
     "build_parity_fixture",
     "build_selection_parity_fixture",
+    "check_fixtures",
     "write_parity_fixture",
     "write_selection_parity_fixture",
 ]
+
+#: How far a regenerated float may move before it counts as a real change.
+#:
+#: The two fixtures are compared differently on purpose.
+#:
+#: `lineups.json` holds integers, canonical id strings and MD5 digests. Those are
+#: exact quantities: a single differing bit is a bug, and it is compared byte for
+#: byte.
+#:
+#: `selection.json` holds utilities and softmax outputs -- float64 results of
+#: logs, means and exponentials. Those are *not* bit-portable. The same source
+#: and the same library versions on Linux and on Windows differ in the last
+#: place, because the underlying BLAS and libm do. Requiring byte-identity of a
+#: float artefact means the gate fails on a platform change and passes on a
+#: rounding coincidence, which is the wrong way round.
+#:
+#: 1e-9 is three orders of magnitude above the noise and three orders below any
+#: difference that could come from a changed model. It is also the tolerance the
+#: TypeScript parity suite asserts, so the two agree about what "the same" means.
+FLOAT_TOLERANCE = 1e-9
 
 #: How many random lineups to include beyond the hand-picked edge cases.
 N_RANDOM = 2_000
@@ -287,3 +311,91 @@ def write_selection_parity_fixture(paths: DataPaths) -> Path:
         json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
     return path
+
+
+@dataclass(frozen=True)
+class ParityDrift:
+    """One place a regenerated fixture disagrees with the committed one."""
+
+    fixture: str
+    path: str
+    committed: object
+    fresh: object
+
+    def __str__(self) -> str:
+        return f"{self.fixture}: {self.path}: {self.committed!r} -> {self.fresh!r}"
+
+
+def _compare(
+    fixture: str,
+    committed: object,
+    fresh: object,
+    *,
+    path: str = "",
+    tolerance: float,
+    drifts: list[ParityDrift],
+) -> None:
+    """Walk two decoded fixtures, allowing floats to differ by ``tolerance``."""
+    if isinstance(committed, dict) and isinstance(fresh, dict):
+        for key in sorted(set(committed) | set(fresh)):
+            if key not in committed or key not in fresh:
+                drifts.append(ParityDrift(fixture, f"{path}.{key}", key in committed, key in fresh))
+                continue
+            _compare(
+                fixture,
+                committed[key],
+                fresh[key],
+                path=f"{path}.{key}",
+                tolerance=tolerance,
+                drifts=drifts,
+            )
+        return
+
+    if isinstance(committed, list) and isinstance(fresh, list):
+        if len(committed) != len(fresh):
+            drifts.append(ParityDrift(fixture, f"{path}[len]", len(committed), len(fresh)))
+            return
+        for i, (a, b) in enumerate(zip(committed, fresh, strict=True)):
+            _compare(fixture, a, b, path=f"{path}[{i}]", tolerance=tolerance, drifts=drifts)
+        return
+
+    # `bool` is a subclass of `int`, and a flag flipping is never a rounding
+    # difference -- so it is checked for identity before the numeric branch.
+    if isinstance(committed, bool) or isinstance(fresh, bool):
+        if committed is not fresh:
+            drifts.append(ParityDrift(fixture, path, committed, fresh))
+        return
+
+    if isinstance(committed, (int, float)) and isinstance(fresh, (int, float)):
+        if abs(float(committed) - float(fresh)) > tolerance:
+            drifts.append(ParityDrift(fixture, path, committed, fresh))
+        return
+
+    if committed != fresh:
+        drifts.append(ParityDrift(fixture, path, committed, fresh))
+
+
+def check_fixtures(paths: DataPaths) -> list[ParityDrift]:
+    """Regenerate both fixtures and report every real disagreement.
+
+    This replaces a `git diff` on the committed files, and the reason is in
+    :data:`FLOAT_TOLERANCE`: one fixture is exact and the other is floating
+    point, so one comparison cannot serve both. Structure is still compared
+    exactly in both -- a missing key, a changed tier, a different player id or a
+    list that grew is a difference at any tolerance.
+    """
+    drifts: list[ParityDrift] = []
+
+    for name, builder, tolerance in (
+        ("lineups.json", build_parity_fixture, 0.0),
+        ("selection.json", build_selection_parity_fixture, FLOAT_TOLERANCE),
+    ):
+        path = paths.parity / name
+        if not path.exists():
+            drifts.append(ParityDrift(name, "", "committed", "missing"))
+            continue
+        committed = json.loads(path.read_text(encoding="utf-8"))
+        fresh = json.loads(json.dumps(builder(paths)))
+        _compare(name, committed, fresh, tolerance=tolerance, drifts=drifts)
+
+    return drifts

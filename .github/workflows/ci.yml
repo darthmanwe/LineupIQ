@@ -190,12 +190,25 @@ jobs:
           cache: npm
       - run: uv sync --extra dev
         working-directory: services/ml
-      - run: uv run lineupiq parity
+      # `--check` regenerates in memory and compares, rather than writing and
+      # diffing. The two fixtures need different comparisons and `git diff`
+      # cannot give them: `lineups.json` is integers and MD5 digests, where one
+      # differing bit is a bug, while `selection.json` is float64 results of
+      # logs, means and exponentials, which are not bit-portable between Linux
+      # and Windows. Requiring byte-identity of a float artefact fails on a
+      # platform change and passes on a rounding coincidence.
+      - run: uv run lineupiq parity --check
         working-directory: services/ml
-      - name: Assert the fixtures and the export are unchanged
+
+      # The export is a different case: it is regenerated to disk and diffed,
+      # because it is what the Worker actually serves and a stale committed copy
+      # is a real defect rather than a rounding one.
+      - run: uv run lineupiq export
+        working-directory: services/ml
+      - name: Assert the committed export is not stale
         run: |
-          git diff --exit-code -- data/parity/ apps/web/public/data/ \
-            || (echo "::error::Regenerating a parity fixture changed it. Commit the new one." && exit 1)
+          git diff --exit-code -- apps/web/public/data/ \
+            || (echo "::error::Regenerating the export changed it. Commit the new one." && exit 1)
       - run: npm ci
       - run: npm --workspace apps/api run test
 

@@ -87,3 +87,18 @@ def test_dim_player_survives_deduplication_identically(paths: DataPaths) -> None
         for variant in _permutations(frame)
     ]
     assert names[0] == names[1] == names[2]
+
+
+def test_parity_fixtures_reproduce(paths: DataPaths) -> None:
+    """The gate CI runs, run here too.
+
+    `lineupiq parity --check` regenerates both fixtures in memory and compares
+    them: exactly for the hash-and-tier fixture, and to 1e-9 for the scorer's,
+    because float64 results of logs and exponentials are not bit-portable
+    between platforms. Requiring byte-identity of a float artefact fails on a
+    platform change and passes on a rounding coincidence.
+    """
+    from lineupiq.serve.parity import check_fixtures
+
+    drifts = check_fixtures(paths)
+    assert not drifts, "\n".join(str(d) for d in drifts[:10])

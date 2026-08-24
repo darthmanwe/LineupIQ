@@ -944,7 +944,13 @@ def backtest(
 
 
 @app.command()
-def parity() -> None:
+def parity(
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Regenerate in memory and compare to the committed fixtures instead of writing.",
+    ),
+) -> None:
     """Write the Python/TypeScript parity fixtures.
 
     The Worker re-implements three things: the lineup hash, the support tier,
@@ -957,9 +963,30 @@ def parity() -> None:
     workerd asserts TypeScript reproduces them, to 1e-9. Neither implementation
     is the reference; the fixture is the contract.
     """
-    from lineupiq.serve.parity import write_parity_fixture, write_selection_parity_fixture
+    from lineupiq.serve.parity import (
+        FLOAT_TOLERANCE,
+        check_fixtures,
+        write_parity_fixture,
+        write_selection_parity_fixture,
+    )
 
     paths = DataPaths.discover()
+
+    if check:
+        drifts = check_fixtures(paths)
+        if drifts:
+            console.print(f"[bold red]{len(drifts)} fixture value(s) moved[/]")
+            for drift in drifts[:20]:
+                console.print(f"  - {drift}")
+            if len(drifts) > 20:
+                console.print(f"  … and {len(drifts) - 20} more")
+            raise typer.Exit(code=1)
+        console.print(
+            f"[green]Both fixtures reproduce.[/] [dim]Hashes and tiers exactly; "
+            f"floats to {FLOAT_TOLERANCE:g}.[/]"
+        )
+        return
+
     path = write_parity_fixture(paths)
     import json as _json
 
