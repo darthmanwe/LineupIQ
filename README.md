@@ -67,9 +67,9 @@ else is on the floor, then projects how a trade changes it.
 | Page                    | What it answers                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **Lineup Optimizer**    | **Live:** court heatmap of expected points per attempt by zone, with a hatched refusal below the support floor. |
-| **Trade Simulator**     | Rotation before and after a swap, with offensive and defensive deltas under an explicitly chosen minutes rule. |
+| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers. |
 | **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.    |
-| **Data Quality & Eval** | Every quality gate, the model's calibration, and what it gets wrong.                                           |
+| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, and RAPM reliability.               |
 
 ## Why this is hard
 

@@ -389,6 +389,51 @@ def export_evaluation(paths: DataPaths) -> dict[str, Any]:
     return {"available": sorted(out), **out}
 
 
+def export_coverage(paths: DataPaths) -> dict[str, Any]:
+    """Every data-quality gate with its threshold, measurement and verdict.
+
+    Re-derived from committed gold rather than read from a cached report, so an
+    endpoint cannot serve a gate result that no longer holds. Four of these
+    gates exist because of bugs that were silent when found; the detail string
+    on each says which.
+    """
+    from lineupiq.features.shot_context import attach_possession_context
+    from lineupiq.io.gold import load_all_gold
+    from lineupiq.validate.checks import run_gates
+
+    shot_facts = load_all_gold(paths, "shot_facts")
+    possession_facts = load_all_gold(paths, "possession_facts")
+    tables = {
+        "shot_facts": shot_facts,
+        "stints": load_all_gold(paths, "stints"),
+        "possession_facts": possession_facts,
+        "shots_with_context": attach_possession_context(shot_facts, possession_facts),
+    }
+    results = run_gates(tables)
+
+    return {
+        "gates": [
+            {
+                "name": result.name,
+                "measured": _round(result.measured),
+                "threshold": _round(result.threshold),
+                "comparison": result.comparison,
+                "verdict": result.verdict,
+                "severity": result.severity,
+                "detail": result.detail,
+            }
+            for result in results
+        ],
+        "n_gates": len(results),
+        "n_passing": sum(1 for result in results if result.passed),
+        "coverage": {
+            "shots": shot_facts.height,
+            "possessions": possession_facts.height,
+            "seasons": sorted({int(s) for s in shot_facts["season"].unique().to_list()}),
+        },
+    }
+
+
 def export_snapshot(paths: DataPaths) -> dict[str, Any]:
     """Which committed build is being served.
 
@@ -429,5 +474,6 @@ def export_all(paths: DataPaths, directory: Path | None = None) -> ExportManifes
         ),
         "snapshot.json": _write(target, "snapshot.json", export_snapshot(paths)),
         "evaluation.json": _write(target, "evaluation.json", export_evaluation(paths)),
+        "coverage.json": _write(target, "coverage.json", export_coverage(paths)),
     }
     return ExportManifest(files=files)

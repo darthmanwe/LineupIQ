@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import coverageJson from "../../web/public/data/coverage.json";
 import evaluationJson from "../../web/public/data/evaluation.json";
 import playersJson from "../../web/public/data/players.json";
 import selectionJson from "../../web/public/data/selection_model.json";
@@ -29,6 +30,7 @@ const ASSETS: Record<string, unknown> = {
   "snapshot.json": snapshotJson,
   "selection_model.json": selectionJson,
   "evaluation.json": evaluationJson,
+  "coverage.json": coverageJson,
 };
 
 const env = {
@@ -249,16 +251,41 @@ describe("model and evaluation routes", () => {
     expect(body.available.length).toBeGreaterThan(0);
   });
 
+  it("serves every quality gate with its threshold and verdict", async () => {
+    const response = await get("/api/dq/coverage");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: {
+        gates: Array<{ name: string; verdict: string; severity: string; detail: string }>;
+        n_gates: number;
+        n_passing: number;
+      };
+    };
+    expect(body.data.n_gates).toBeGreaterThanOrEqual(12);
+    // A gate with no detail is a gate nobody can act on.
+    for (const gate of body.data.gates) {
+      expect(gate.detail.length).toBeGreaterThan(20);
+      expect(["PASS", "WARN", "FAIL"]).toContain(gate.verdict);
+    }
+    // The served snapshot must pass its own gates, or the endpoint 503s.
+    expect(body.data.n_passing).toBe(body.data.n_gates);
+  });
+
   it("serves the retrieval ablation", async () => {
     const response = await get("/api/eval/retrieval");
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      data: { by_corpus: Record<string, Record<string, { recall: number }>> };
+      data: { by_corpus: Record<string, Record<string, { recall: number }> | undefined> };
+    };
+    const recall = (corpus: string): number => {
+      const scores = body.data.by_corpus[corpus];
+      expect(scores, `no ${corpus} corpus in the ablation`).toBeDefined();
+      const bm25 = scores?.bm25;
+      expect(bm25, `no bm25 leg for ${corpus}`).toBeDefined();
+      return bm25?.recall ?? Number.NaN;
     };
     // The finding itself: bare decimals retrieve far worse than vocabulary.
-    expect(body.data.by_corpus.full.bm25.recall).toBeGreaterThan(
-      body.data.by_corpus.numbers.bm25.recall
-    );
+    expect(recall("full")).toBeGreaterThan(recall("numbers"));
   });
 });
 

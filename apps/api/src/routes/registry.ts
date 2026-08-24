@@ -34,7 +34,6 @@ export type RouteSpec = {
   instead?: string;
 };
 
-const M2 = "M2 — data foundation and stint reconstruction";
 const M3 = "M3 — EPSA model, calibration and the eval harness";
 const M4 = "M4 — the refusal contract";
 const M5 = "M5 — trade simulator and counterfactual backtest";
@@ -203,10 +202,7 @@ export const ROUTES: readonly RouteSpec[] = [
     method: "GET",
     path: "/dq/coverage",
     summary: "Stint validity, event coverage, stint-vs-box-score minutes.",
-    state: "planned",
-    willServe: "Every data-quality gate with its threshold, measured value and verdict.",
-    milestone: M2,
-    backedBy: "data/oracle/*.parquet",
+    state: "live",
   },
 
   // -- permanently withdrawn ----------------------------------------------

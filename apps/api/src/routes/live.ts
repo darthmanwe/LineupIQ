@@ -9,6 +9,7 @@
 import type { Context, Hono } from "hono";
 
 import {
+  loadCoverage,
   loadEvaluation,
   loadPlayers,
   loadSelectionModel,
@@ -304,6 +305,42 @@ export function mountLive(app: App): void {
                   "those numbers.",
               ]
             : [],
+        })
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * Every data-quality gate, with its threshold and verdict.
+   *
+   * A failing blocking gate makes the whole response a 503: an API that serves
+   * numbers derived from data it knows is broken is worse than one that stops.
+   */
+  app.get("/dq/coverage", async (c) => {
+    try {
+      const coverage = await loadCoverage(c.env);
+      const failing = coverage.gates.filter(
+        (gate) => gate.verdict === "FAIL" && gate.severity === "blocking"
+      );
+      if (failing.length) {
+        return problem(c, {
+          status: 503,
+          code: "DATA_QUALITY_FAILURE",
+          title: "A blocking data-quality gate is failing",
+          detail:
+            "The served snapshot does not pass its own quality gates, so every number " +
+            "derived from it is suspect. This is a stop, not a warning.",
+          extensions: { failing: failing.map((gate) => gate.name) },
+        });
+      }
+      return c.json(
+        envelope(c, coverage, {
+          snapshot: c.env.SNAPSHOT ?? null,
+          warnings: coverage.gates
+            .filter((gate) => gate.verdict === "WARN")
+            .map((gate) => `${gate.name}: ${gate.detail}`),
         })
       );
     } catch (error) {

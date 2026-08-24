@@ -126,6 +126,26 @@ export type EvaluationData = {
 export const loadEvaluation = (env: Bindings): Promise<EvaluationData> =>
   read<EvaluationData>(env, "evaluation.json");
 
+export type Gate = {
+  name: string;
+  measured: number;
+  threshold: number;
+  comparison: "min" | "max";
+  verdict: "PASS" | "FAIL" | "WARN";
+  severity: "blocking" | "reported";
+  detail: string;
+};
+
+export type CoverageData = {
+  gates: Gate[];
+  n_gates: number;
+  n_passing: number;
+  coverage: { shots: number; possessions: number; seasons: number[] };
+};
+
+export const loadCoverage = (env: Bindings): Promise<CoverageData> =>
+  read<CoverageData>(env, "coverage.json");
+
 /** Exposed for tests, which need a clean isolate between cases. */
 export function clearAssetCache(): void {
   cache.clear();
