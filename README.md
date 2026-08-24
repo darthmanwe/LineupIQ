@@ -355,6 +355,46 @@ spacing than he usually has.
 _Generated from run `19c905d` on Windows, seed 20260815, 671,251 attempts across 3 seasons._
 <!-- lineupiq:end id=results.selection -->
 
+### What the effect is worth
+
+A log-loss improvement is not a quantity anyone can act on. Converting the shot-mix shift
+into points is, and it is the honest close to the section above.
+
+<!-- lineupiq:begin id=results.selection_priced -->
+**What the shot-mix shift is worth**, over 4,000 random five-man lineups, priced at league points per attempt by zone:
+
+| | Points per 100 attempts |
+|---|---|
+| Median | -0.011 |
+| Interquartile range | -0.093 to +0.076 |
+| 1st to 99th percentile | -0.543 to +0.508 |
+| Standard deviation | 0.186 |
+| Largest in the sample | 1.249 |
+| Within +/-0.5 points | 97.5% |
+
+**The effect is real and it is small, and both halves are the result.** It improves log loss on unseen five-man combinations, it survives a shuffled-lineup control, and `spacing_x_three` keeps its sign across three specifications including a within-shooter one. Priced, it is worth hundredths of a point per hundred attempts. A model can be statistically detectable and economically negligible at the same time; reporting the first without the second is how a real result becomes an overclaim.
+
+The zone values it prices with are the ones every basketball source reports, which is a cheap check that nothing is inverted:
+
+| Zone | Points per attempt |
+|---|---|
+| restricted_area | 1.327 |
+| corner_three_right | 1.165 |
+| corner_three_left | 1.153 |
+| wing_three | 1.099 |
+| top_three | 1.048 |
+| paint_non_ra | 0.884 |
+| mid_baseline | 0.836 |
+| mid_wing | 0.826 |
+| mid_top | 0.817 |
+<!-- lineupiq:end id=results.selection_priced -->
+
+Priced at **league** conversion rates rather than each shooter's own, which is the estimand
+and not a shortcut: his own rates would fold the two channels back together, so part of the
+answer would be "he shoots better from there" and part "the lineup got him there". At fixed
+conversion the whole difference is selection — and it costs nothing in accuracy, because the
+conversion model found no measurable lineup effect on the first channel.
+
 The context features come from the possession layer, and one distinction there is
 load-bearing. `seconds_into_possession` is fixed at the moment the shot goes up, so it is a
 legitimate feature. `possession_seconds` and `transition` are **not**: a possession ends on

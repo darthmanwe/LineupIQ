@@ -408,6 +408,91 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+#: Lineups drawn to price the selection effect. Enough that the tails are
+#: stable to two decimals; the draw is seeded, so the table reproduces.
+_PRICED_SAMPLE = 4_000
+
+
+def _selection_priced(ctx: RenderContext) -> str:
+    """The selection effect converted into points, which is the honest close.
+
+    The ladder above says the effect is real. This says what it is worth, and
+    those are different questions -- a model can be statistically detectable and
+    economically negligible at once, and reporting the first without the second
+    is how a real result turns into an overclaim.
+
+    Priced at league conversion rates by zone, so the whole quantity is
+    selection: pricing at the shooter's own rates would fold in "he shoots
+    better from there", which is what the other model measures and did not find.
+    """
+    import json as _json
+
+    import numpy as _np
+
+    from lineupiq.config import SEED
+    from lineupiq.serve.score import ScoreRequest, score_selection
+
+    profiles_path = ctx.paths.root / "apps" / "web" / "public" / "data" / "selection_profiles.json"
+    model_path = ctx.paths.root / "apps" / "web" / "public" / "data" / "selection_model.json"
+    if not profiles_path.exists() or not model_path.exists():
+        return "\n_No served model exported. Run `lineupiq export` first._\n"
+
+    profiles = _json.loads(profiles_path.read_text(encoding="utf-8"))
+    model = _json.loads(model_path.read_text(encoding="utf-8"))
+    if not model.get("available"):
+        return "\n_No selection run log committed._\n"
+
+    known = sorted(int(k) for k in profiles["shooter_log_ratio"])
+    rng = _np.random.default_rng(SEED)
+    values = _np.empty(_PRICED_SAMPLE)
+    for i in range(_PRICED_SAMPLE):
+        offence = [known[j] for j in rng.choice(len(known), 5, replace=False)]
+        defence = [known[j] for j in rng.choice(len(known), 5, replace=False)]
+        values[i] = score_selection(
+            ScoreRequest(offence[0], tuple(offence), tuple(defence)),
+            profiles,
+            model["coefficients"],
+            model["term_names"],
+        ).points_per_100
+
+    zone_points = dict(zip(profiles["zones"], profiles["zone_points"], strict=True))
+    ordered = sorted(zone_points.items(), key=lambda kv: -kv[1])
+
+    out = [
+        "",
+        f"**What the shot-mix shift is worth**, over {_PRICED_SAMPLE:,} random five-man "
+        "lineups, priced at league points per attempt by zone:",
+        "",
+        "| | Points per 100 attempts |",
+        "|---|---|",
+        f"| Median | {_np.median(values):+.3f} |",
+        f"| Interquartile range | {_np.percentile(values, 25):+.3f} to "
+        f"{_np.percentile(values, 75):+.3f} |",
+        f"| 1st to 99th percentile | {_np.percentile(values, 1):+.3f} to "
+        f"{_np.percentile(values, 99):+.3f} |",
+        f"| Standard deviation | {values.std():.3f} |",
+        f"| Largest in the sample | {_np.abs(values).max():.3f} |",
+        f"| Within +/-0.5 points | {(_np.abs(values) < 0.5).mean():.1%} |",
+        "",
+        "**The effect is real and it is small, and both halves are the result.** It improves "
+        "log loss on unseen five-man combinations, it survives a shuffled-lineup control, and "
+        "`spacing_x_three` keeps its sign across three specifications including a "
+        "within-shooter one. Priced, it is worth hundredths of a point per hundred attempts. "
+        "A model can be statistically detectable and economically negligible at the same "
+        "time; reporting the first without the second is how a real result becomes an "
+        "overclaim.",
+        "",
+        "The zone values it prices with are the ones every basketball source reports, which "
+        "is a cheap check that nothing is inverted:",
+        "",
+        "| Zone | Points per attempt |",
+        "|---|---|",
+    ]
+    out += [f"| {zone} | {value:.3f} |" for zone, value in ordered]
+    out.append("")
+    return "\n".join(out)
+
+
 def _rapm(ctx: RenderContext) -> str:
     """RAPM, and the reliability number that decides whether to believe it."""
     run = _read_json(ctx.paths.runs / "rapm" / "run.json")
@@ -728,6 +813,7 @@ RENDERERS = {
     "results.estimability": _estimability,
     "results.model": _model_results,
     "results.selection": _selection_results,
+    "results.selection_priced": _selection_priced,
     "results.rapm": _rapm,
     "results.trade": _trade,
     "results.retrieval": _retrieval,
