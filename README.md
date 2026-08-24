@@ -9,11 +9,14 @@ behind every number, and an explicit refusal when there isn't one.**
 > **Status: milestones 1–5 and 7 of 8.** Three seasons are ingested, lineups are
 > reconstructed and validated against box-score minutes, two shot models (conversion and
 > selection) are fitted against full baseline ladders, RAPM is fitted on possessions with
-> published split-half reliability, and the trade projection is backtested against real
-> mid-season moves with its power analysis stated first, and the court heatmap is live. The
-> retrieval evaluation runs offline; live narrative generation is not
-> built; its endpoints return `501 NOT_YET_BACKED` naming what will back them. No number in
-> this README is typed by hand — every one is rendered from a run log by
+> published split-half reliability, the trade projection is backtested against real
+> mid-season moves with its power analysis stated first, and the court heatmap is live.
+> **The selection model is served**: `POST /api/lineups/score` scores any five-man lineup,
+> including combinations that have never played a possession together, and the TypeScript
+> implementation is asserted equal to the Python fit to 1e-9 over 507 committed cases. The
+> retrieval evaluation and the groundedness harness run offline; live narrative generation
+> is not built, and its endpoints return `501 NOT_YET_BACKED` naming what will back them. No
+> number in this README is typed by hand — every one is rendered from a run log by
 > `lineupiq report render`, and CI fails if a committed block goes stale.
 
 ---
@@ -64,12 +67,18 @@ coefficient that contradicts it.
 Pick any five players. LineupIQ estimates what each should shoot and from where, given who
 else is on the floor, then projects how a trade changes it.
 
-| Page                    | What it answers                                                                                                |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Lineup Optimizer**    | **Live:** court heatmap of expected points per attempt by zone, with a hatched refusal below the support floor. |
-| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers. |
-| **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.    |
-| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, and RAPM reliability.               |
+| Page                    | What it answers                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Lineup Optimizer**    | **Live:** the shot-value surface by zone, plus a picker — choose any five players and see how that lineup moves a shooter's attempts between zones. Refusals render as refusals. |
+| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
+| **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.          |
+| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
+
+The picker scores combinations that have never played a possession together — which is the
+whole point, and the reason the model is a conditional logit rather than the
+gradient-boosted fit it is benchmarked against. Nine dot products and a softmax fit inside a
+10 ms CPU budget; `C(450, 5)` is 1.5×10¹¹, so nothing could have been precomputed. What that
+constraint costs in log loss is published below rather than absorbed.
 
 ## Why this is hard
 
@@ -641,19 +650,40 @@ including an arithmetic mistake in its headline formula and a contradiction abou
 - **Shot-selection endogeneity is not solved.** The model treats observed shot mix as
   opportunity; some of it is choice.
 - **Nothing here is causal.**
+- **The reproducibility gate is trusted from CI, not from the machine this was built on.**
+  That workstation turned out to have a hardware fault — a kernel-mode bugcheck, a WHEA
+  corrected machine-check from Processor Core, and a ninety-line script using nothing but
+  numpy and Python dicts that reproduces random access violations with this repository
+  entirely out of the picture. Under sustained memory pressure it produces wrong answers,
+  not only crashes, which makes every number it computed suspect. So `train --verify` and
+  `selection --verify` run nightly on Linux runners
+  ([`repro.yml`](.github/workflows/repro.yml)), and the committed run logs they compare
+  against are regenerated there too ([`refit.yml`](.github/workflows/refit.yml)) rather than
+  locally. A gate calibrated to a fault is worse than no gate.
+
+  Running it on a second platform for the first time immediately found two real defects that
+  one machine could never have shown: a cross-validation split whose fold membership depended
+  on the thread-pool size, and a 1e-6 drift tolerance applied to binned estimators that are
+  discontinuous in the predictions. Both are fixed; both are described in
+  [`docs/modeling.md`](docs/modeling.md).
 
 ## Roadmap
 
-|     | Milestone                                                                      | State                                                                                |
-| --- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| M1  | Skeleton: route registry, refusal plumbing, CI, both toolchains                | **done**                                                                             |
-| M2  | Ingest 3 seasons; stint reconstruction validated against box-score minutes     | **done**                                                                             |
-| M3  | Shot model, calibration, baseline ladder, leakage assertions, negative control | **done**                                                                             |
-| M4  | Pre-registered support thresholds and the refusal contract                     | **partial** — thresholds and tiering built; API wiring and court heatmap outstanding |
-| M5  | Trade simulator and the counterfactual backtest                                | not started                                                                          |
-| M6  | Retrieval and the LLM evaluation harness                                       | not started                                                                          |
-| M7  | Snowflake adapter                                                              | not started                                                                          |
-| M8  | Results generated from run logs                                                | **done** — media capture and deploy outstanding                                      |
+|     | Milestone                                                                      | State                                                                       |
+| --- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| M1  | Skeleton: route registry, refusal plumbing, CI, both toolchains                | **done**                                                                    |
+| M2  | Ingest 3 seasons; stint reconstruction validated against box-score minutes     | **done**                                                                    |
+| M3  | Shot model, calibration, baseline ladder, leakage assertions, negative control  | **done** — and the served scorer, parity-proven to 1e-9                     |
+| M4  | Pre-registered support thresholds and the refusal contract                     | **done** — thresholds hash-pinned, API wired, court heatmap live            |
+| M5  | Trade simulator and the counterfactual backtest                                | **partial** — backtest done, verdict `UNDERPOWERED`; served deltas withheld |
+| M6  | Retrieval and the LLM evaluation harness                                       | **partial** — retrieval ablation and groundedness done; no LLM has been called |
+| M7  | Snowflake adapter                                                              | **done** — DDL generated from the same contracts, `sqlfluff`-linted in CI   |
+| M8  | Results generated from run logs                                                | **done** — media capture and deploy outstanding                             |
+
+M5 is deliberately incomplete rather than pending. The backtest ran, and its own power
+analysis says the minimum detectable effect is the same size as the effects it projects, so
+`POST /api/trades/simulate` stays at `501`. Shipping a projection whose accuracy cannot be
+established is the failure this repository is built to avoid.
 
 ---
 
