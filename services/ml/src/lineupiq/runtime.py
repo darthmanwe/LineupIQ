@@ -41,6 +41,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from typing import Any
 
 __all__ = [
     "DEFAULT_MEMORY_CAP_GB",
@@ -61,10 +62,30 @@ __all__ = [
 #: usable while still catching the runaway growth this module exists for.
 _DEFAULT_CAP_SHARE = 0.25
 
-#: Bounds on the derived default, in GB. The floor keeps a small machine from
-#: setting a cap so low that nothing runs; the ceiling keeps a large one from
+#: Bounds on the derived default, in GB. The ceiling keeps a large machine from
 #: setting a cap so high it stops being a limit.
-_MIN_CAP_GB, _MAX_CAP_GB = 4.0, 24.0
+_MAX_CAP_GB = 24.0
+
+#: Floor on the derived default, and it is **platform-dependent for a real
+#: reason**.
+#:
+#: The two mechanisms do not measure the same thing. A Windows job object's
+#: ``ProcessMemoryLimit`` bounds *committed* memory. POSIX ``RLIMIT_AS`` bounds
+#: *address space* -- which counts every reservation: each shared library mapped,
+#: every arena a numeric allocator reserves up front and may never touch, and the
+#: large sparse mappings BLAS makes. A process whose resident set peaks at 2.5 GB
+#: routinely maps three or four times that.
+#:
+#: So the same number means something much stricter on Linux, and a 4 GB
+#: ``RLIMIT_AS`` is not a generous guard rail -- it is tight enough that
+#: importing scipy fails with ``failed to map segment from shared object``. That
+#: is exactly how it surfaced: a CI job died with a ``MemoryError`` from a
+#: retrieval evaluation that uses a few hundred megabytes.
+#:
+#: Treating a limit as portable because the number is the same is the mistake
+#: here. The POSIX floor is higher to compensate, and it is still a limit -- it
+#: catches runaway growth, which is what it is for.
+_MIN_CAP_GB = 4.0 if sys.platform == "win32" else 10.0
 
 
 def _physical_memory_gb() -> float | None:
@@ -186,7 +207,7 @@ _JOB_LIMIT_PROCESS_MEMORY = 0x00000100
 _JOB_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 
 
-def _kernel32() -> object:
+def _kernel32() -> Any:
     """``kernel32`` with every signature declared.
 
     Declaring them is not optional. ctypes types an undeclared return value as
@@ -194,6 +215,14 @@ def _kernel32() -> object:
     fails with ``ERROR_INVALID_HANDLE``, a failure that reads exactly like a
     permissions problem and is not one.
     """
+    # The guard is for mypy as much as for correctness. `ctypes.WinDLL` does not
+    # exist on POSIX, and `warn_unused_ignores` is on -- so a `type: ignore` that
+    # silences the Linux leg of the CI matrix fails the Windows leg. Narrowing on
+    # `sys.platform` typechecks correctly on both, because mypy treats the other
+    # branch as unreachable for the platform it is checking.
+    if sys.platform != "win32":  # pragma: no cover - guarded by every caller
+        raise RuntimeError("kernel32 is only available on Windows")
+
     import ctypes
     from ctypes import wintypes
 
@@ -222,7 +251,7 @@ def _kernel32() -> object:
     return lib
 
 
-def _extended_limit_struct() -> object:
+def _extended_limit_struct() -> Any:
     """Build ``JOBOBJECT_EXTENDED_LIMIT_INFORMATION`` lazily.
 
     Defined at call time rather than at module scope so importing this module on
@@ -269,10 +298,16 @@ def _extended_limit_struct() -> object:
 
 def _cap_windows(cap_bytes: int) -> MemoryCapResult:
     global _JOB_HANDLE
+
+    # Same reason as `_kernel32`: `ctypes.get_last_error` is Windows-only, and a
+    # platform-specific ignore breaks the other leg of the matrix.
+    if sys.platform != "win32":  # pragma: no cover - guarded by `cap_process_memory`
+        raise RuntimeError("job objects are only available on Windows")
+
     import ctypes
 
     kernel32 = _kernel32()
-    handle = kernel32.CreateJobObjectW(None, None)  # type: ignore[attr-defined]
+    handle = kernel32.CreateJobObjectW(None, None)
     if not handle:
         return MemoryCapResult(
             False,
@@ -281,11 +316,11 @@ def _cap_windows(cap_bytes: int) -> MemoryCapResult:
             f"CreateJobObjectW failed: {ctypes.get_last_error()}",
         )
 
-    info = _extended_limit_struct()()  # type: ignore[operator]
+    info = _extended_limit_struct()()
     info.BasicLimitInformation.LimitFlags = _JOB_LIMIT_PROCESS_MEMORY | _JOB_LIMIT_KILL_ON_JOB_CLOSE
     info.ProcessMemoryLimit = cap_bytes
 
-    if not kernel32.SetInformationJobObject(  # type: ignore[attr-defined]
+    if not kernel32.SetInformationJobObject(
         handle, _JOB_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)
     ):
         return MemoryCapResult(
@@ -295,9 +330,9 @@ def _cap_windows(cap_bytes: int) -> MemoryCapResult:
             f"SetInformationJobObject failed: {ctypes.get_last_error()}",
         )
 
-    if not kernel32.AssignProcessToJobObject(  # type: ignore[attr-defined]
+    if not kernel32.AssignProcessToJobObject(
         handle,
-        kernel32.GetCurrentProcess(),  # type: ignore[attr-defined]
+        kernel32.GetCurrentProcess(),
     ):
         return MemoryCapResult(
             False,
@@ -333,8 +368,8 @@ def peak_process_memory_bytes() -> int | None:
     import ctypes
 
     kernel32 = _kernel32()
-    info = _extended_limit_struct()()  # type: ignore[operator]
-    if not kernel32.QueryInformationJobObject(  # type: ignore[attr-defined]
+    info = _extended_limit_struct()()
+    if not kernel32.QueryInformationJobObject(
         ctypes.c_void_p(_JOB_HANDLE),
         _JOB_EXTENDED_LIMIT_INFORMATION,
         ctypes.byref(info),

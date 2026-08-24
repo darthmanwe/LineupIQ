@@ -146,7 +146,10 @@ def build_lineup_support(stints: pl.DataFrame, shot_facts: pl.DataFrame) -> pl.D
             .alias("min_player_attempts"),
         )
         .drop("_key")
-        .sort("possessions", descending=True)
+        # Tiebreak on the hash: `possessions` is an integer count over 49,827
+        # groups, and a `group_by` order is not a promise. See `retrieval/docs.py`
+        # for what an untiebroken sort of this shape actually cost.
+        .sort(["possessions", "lineup_hash"], descending=[True, False])
     )
 
 

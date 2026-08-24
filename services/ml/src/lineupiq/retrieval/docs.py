@@ -200,7 +200,16 @@ def build_documents(
             pl.col("off_lineup").first().alias("lineup"),
         )
         .filter(pl.col("possessions") >= min_possessions)
-        .sort("possessions", descending=True)
+        # The hash breaks the tie, and it has to. `possessions` is an integer
+        # count over ~6,000 groups, so ties are the norm, and `group_by` makes no
+        # ordering promise -- ties were being resolved by whichever order the
+        # parallel aggregation produced. The groundedness harness scores the first
+        # 200 documents, so a different tie resolution scored a different 200:
+        # `player_scope` failures came out 197 on one machine and 198 on another,
+        # moving the published grounded rate from 0.015 to 0.010.
+        #
+        # A rate that changes with the core count is not a measurement.
+        .sort(["possessions", "off_lineup_hash"], descending=[True, False])
     )
 
     # Shot mix per lineup, from the shot table rather than the possession table:

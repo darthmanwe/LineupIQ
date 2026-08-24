@@ -213,7 +213,10 @@ def _possessions(ctx: RenderContext) -> str:
     by_start = (
         poss.group_by("possession_start_type")
         .agg(pl.len().alias("n"), pl.col("points").mean().alias("ppp"))
-        .sort("ppp", descending=True)
+        # Five groups and a float key, so a tie is unlikely rather than
+        # impossible -- but this table goes into the README and `report check`
+        # fails on any difference, so "unlikely" is not the standard.
+        .sort(["ppp", "possession_start_type"], descending=[True, False])
     )
 
     lines = [

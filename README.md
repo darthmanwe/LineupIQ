@@ -485,20 +485,20 @@ Then it gets measured against the two obvious alternatives, on identical underly
 
 | Corpus | BM25 | LSA (dense) | RRF (hybrid) |
 |---|---|---|---|
-| `events` -- per-stint event log (the original design's proposal) | 0.398 / 0.417 / 0.395 | 0.382 / 0.384 / 0.361 | 0.398 / 0.417 / 0.393 |
-| `numbers` -- the same facts as bare decimals | 0.064 / 0.090 / 0.062 | 0.107 / 0.265 / 0.119 | 0.069 / 0.139 / 0.068 |
-| `full` -- names, archetypes, style tags, comparatives, caveats | 0.973 / 1.000 / 0.981 | 0.803 / 0.864 / 0.799 | 0.988 / 0.939 / 0.945 |
+| `events` -- per-stint event log (the original design's proposal) | 0.398 / 0.417 / 0.395 | 0.387 / 0.417 / 0.386 | 0.398 / 0.417 / 0.395 |
+| `numbers` -- the same facts as bare decimals | 0.064 / 0.091 / 0.062 | 0.120 / 0.273 / 0.131 | 0.076 / 0.130 / 0.071 |
+| `full` -- names, archetypes, style tags, comparatives, caveats | 0.973 / 1.000 / 0.981 | 0.822 / 0.885 / 0.826 | 0.988 / 0.950 / 0.952 |
 
 _Each cell is Recall@10 / MRR / nDCG@10._
 
 **Document design moves Recall@10 from 0.064 to 0.973** on identical underlying facts -- a factor of 15. The original design document asserted that document design drives retrieval quality; this is that assertion measured. A corpus of bare decimals is close to unusable, because a query has words in it and a decimal has no words to match.
 
-**BM25 alone beats the hybrid on two of three metrics, and that is reported rather than buried.** On the full corpus BM25 reaches MRR 1.000 and nDCG@10 0.981 against the hybrid's 0.939 and 0.945; the hybrid wins only on Recall@10 (0.988 vs 0.973). Rank fusion pulls more relevant documents into the top ten and dilutes what sits at the top. That is the expected shape for a corpus built from a closed vocabulary and named entities, which is precisely what lexical matching is best at -- a dense leg earns its place when queries are phrased in words the documents do not contain, and these queries are not.
+**BM25 alone beats the hybrid on two of three metrics, and that is reported rather than buried.** On the full corpus BM25 reaches MRR 1.000 and nDCG@10 0.981 against the hybrid's 0.950 and 0.952; the hybrid wins only on Recall@10 (0.988 vs 0.973). Rank fusion pulls more relevant documents into the top ten and dilutes what sits at the top. That is the expected shape for a corpus built from a closed vocabulary and named entities, which is precisely what lexical matching is best at -- a dense leg earns its place when queries are phrased in words the documents do not contain, and these queries are not.
 
 | Query kind | BM25 | LSA | RRF |
 |---|---|---|---|
 | composite | 0.967 | 0.847 | 0.980 |
-| players | 1.000 | 0.915 | 1.000 |
+| players | 1.000 | 0.973 | 1.000 |
 | style | 0.953 | 0.647 | 0.983 |
 
 _Recall@10 on the full corpus, by query kind._
@@ -539,7 +539,7 @@ been called by this repository.
 |---|---|---|---|---|---|
 | `faithful` — every number traceable, tier respected | 200 | **100.0%** | 100.0% | 0.5% | 0.5% |
 | `overclaiming` — **only correct numbers**, asserts a point estimate | 200 | **50.0%** | 100.0% | 0.5% | 0.0% |
-| `hallucinating` — names a player who was not on the floor | 200 | **1.5%** | 100.0% | 0.0% | 0.5% |
+| `hallucinating` — names a player who was not on the floor | 200 | **1.0%** | 100.0% | 0.0% | 0.5% |
 
 **Read the second row.** Numeric traceability is 100% — every figure in every one of those narratives appears in the evidence. And 50% of them are grounded, because 100 assert a point estimate for a lineup below the reporting floor. The numbers are right and the sentences are wrong.
 

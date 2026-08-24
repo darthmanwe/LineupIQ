@@ -26,9 +26,9 @@
       "control_easy_grounded_rate": 0.0,
       "control_near_miss_grounded_rate": 0.005,
       "failures_by_check": {
-        "player_scope": 197
+        "player_scope": 198
       },
-      "grounded_rate": 0.015,
+      "grounded_rate": 0.01,
       "mean_traceability": 1.0,
       "n": 200
     },

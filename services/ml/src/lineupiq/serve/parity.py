@@ -100,7 +100,18 @@ def build_parity_fixture(paths: DataPaths) -> dict[str, Any]:
         .with_columns(pl.col("lineup").list.sort().alias("lineup"))
         .group_by("lineup")
         .agg(pl.col("duration_seconds").sum().alias("seconds"))
-        .sort("seconds", descending=True)
+        # **The tiebreaker is load-bearing.** `seconds` ties constantly -- stint
+        # durations are whole seconds and there are 49,827 groups -- and
+        # `group_by` makes no ordering promise, so ties were resolved by whatever
+        # order the parallel aggregation happened to produce. Regenerating the
+        # fixture on a machine with a different core count swapped adjacent
+        # equal-duration lineups, which changed 30 of 2,604 cases and failed the
+        # parity gate for a reason that had nothing to do with parity.
+        #
+        # Sorting on the canonical id list after `seconds` makes the order a
+        # function of the data alone. The list is already sorted numerically, so
+        # comparing lists compares them elementwise and is total.
+        .sort(["seconds", "lineup"], descending=[True, False])
         .head(600)
     )
     cases.extend([int(p) for p in row] for row in observed["lineup"].to_list())

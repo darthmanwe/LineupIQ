@@ -400,7 +400,7 @@ class RapmFit:
                 "def_includes_zero": [self.includes_zero(p, "def") for p in self.players],
                 "possessions": [appearances.get(p, 0) for p in self.players],
             }
-        ).sort("total_rapm", descending=True)
+        ).sort(["total_rapm", "player_id"], descending=[True, False])
 
 
 def _fit_from_design(
@@ -708,7 +708,7 @@ def summarise_rapm(report: RapmReport, names: dict[int, str] | None = None) -> p
             .map_elements(lambda p: names.get(int(p), str(p)), return_dtype=pl.Utf8)
             .alias("player_name")
         )
-    return frame.sort("total_rapm", descending=True)
+    return frame.sort(["total_rapm", "player_id"], descending=[True, False])
 
 
 def league_ppp(possessions: pl.DataFrame) -> float:

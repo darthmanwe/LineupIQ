@@ -142,9 +142,18 @@ def export_zone_surface(paths: DataPaths) -> dict[str, Any]:
     # refusal rendering that never fires on the data shipped beside it is
     # decoration, so a genuinely low-volume shooter is exported alongside a
     # high-volume one and the page shows both courts.
-    per_player = shots.group_by("shooter_id").agg(pl.len().alias("attempts")).sort("attempts")
+    # `shooter_id` breaks the tie. Both examples are picked with `.item(0)` off a
+    # sort on an integer attempt count, and hundreds of players share a count in
+    # the 40-90 band -- so without a tiebreaker the *identity of the exported
+    # example player* depends on the order a parallel `group_by` happened to
+    # produce, and the committed export changes between machines.
+    per_player = (
+        shots.group_by("shooter_id")
+        .agg(pl.len().alias("attempts"))
+        .sort(["attempts", "shooter_id"])
+    )
     thin = per_player.filter(pl.col("attempts").is_between(40, 90))
-    thick = per_player.sort("attempts", descending=True)
+    thick = per_player.sort(["attempts", "shooter_id"], descending=[True, False])
 
     examples: dict[str, Any] = {}
     players = load_all_gold(paths, "dim_player")

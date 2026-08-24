@@ -71,7 +71,20 @@ def load_all_gold(
         raise FileNotFoundError(f"no partitions found for {table}")
     frame = pl.concat(parts, how="vertical_relaxed")
     if table == "dim_player":
-        frame = frame.unique(subset=["player_id"], keep="first").sort("player_id")
+        # `maintain_order=True` is not decoration. `keep="first"` only means
+        # anything if "first" is defined, and polars does not preserve row order
+        # through `unique` unless asked -- so which of a player's rows survived
+        # was whichever the parallel pass reached first. A player who changed
+        # teams mid-season has rows that differ, so the surviving *name* could
+        # differ between machines, and it would show up as a changed export with
+        # no code change behind it.
+        #
+        # Partitions are concatenated in season order, so "first" is the earliest
+        # season the player appears in. That is a choice, and this is where it is
+        # made.
+        frame = frame.unique(subset=["player_id"], keep="first", maintain_order=True).sort(
+            "player_id"
+        )
     return frame
 
 
