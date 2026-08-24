@@ -20,7 +20,7 @@ build if the two disagree.
 > against box-score minutes. The ML headline is that I pre-registered what the model should
 > find, and published the two places it didn't.
 
-If you remember only three things:
+If you remember only four things:
 
 1. **The first model asked the wrong question.** `P(make | shot taken)` finds lineup context
    worth +0.019%. Moving the target to `P(zone | shooter, lineup)` — which shot gets taken —
@@ -30,7 +30,13 @@ If you remember only three things:
    `spacing_x_three` was written into the source as positive before fitting. It fitted at
    **−0.474**, survived three robustness specifications, and collapsed to −0.017 under the
    negative control — so it is real, and it is the opposite of the hypothesis.
-3. **The trade backtest's honest answer is "underpowered".** 146 real mid-season moves
+3. **Priced, the effect that survived is worth almost nothing.** The shot-mix shift converted
+   into points has a standard deviation of **0.19 points per 100 attempts**; 97.5% of
+   lineups fall within ±0.5. It is statistically real — it beats a no-lineup control on
+   unseen five-man combinations and survives a shuffled-lineup refit — and it is
+   economically negligible. **Reporting the first without the second is how a real result
+   becomes an overclaim**, so both are on the front page.
+4. **The trade backtest's honest answer is "underpowered".** 146 real mid-season moves
    against a noise floor of 4.31 points per 100 gives a minimum detectable effect of 1.00 —
    the same size as the effects projected. That verdict was computed and committed before
    the result.
@@ -328,6 +334,44 @@ parameterisation is doing real work rather than fitting noise.
 
 The pre-registered expectation was wrong. It stays in the source as written, next to the
 coefficient that contradicts it.
+
+### Pricing the effect, and why in league points rather than the shooter's own
+
+A log-loss improvement is not a decision. "+0.082% on leave-lineup-out" tells you the model
+learned something; it does not tell you whether a coach should care. So the served scorer
+converts the shot-mix shift into points: the delta in each zone's share, dotted with league
+points per attempt for that zone, scaled to 100 attempts.
+
+**The choice of conversion rate is the whole design decision.** Pricing at the shooter's own
+rates is the obvious thing and it is wrong here: it folds the two channels back together, so
+part of the answer would be "he shoots better from there" and part "the lineup got him
+there" — and separating those is the only reason there are two models. Holding conversion at
+league rates makes the entire remaining difference selection, which is the estimand.
+
+It also costs nothing. The conversion model measured whether lineup context changes how well
+a player shoots from a fixed spot and found +0.019% against a passing negative control, so as
+far as this data can tell, **zone value is lineup-independent** and using a lineup-invariant
+price loses no information.
+
+The answer, over 4,000 random five-man lineups:
+
+|                       | Points per 100 attempts |
+| --------------------- | ----------------------- |
+| Median                | −0.011                  |
+| Interquartile range   | −0.093 to +0.076        |
+| Standard deviation    | 0.186                   |
+| Largest in the sample | 1.249                   |
+| Within ±0.5           | 97.5%                   |
+
+That table is the most important thing in the repository and it is generated, not typed —
+`results.selection_priced` in `report/render.py`, seeded, with `report check` failing the
+build if the README drifts from it.
+
+It prints the league zone values alongside, and that is deliberate too: rim 1.327, corner
+threes 1.165 and 1.153, wing 1.099, top 1.048, paint 0.884, mid-range 0.836 down to 0.817.
+That is the shot-value ordering every basketball source reports, so having it in the output
+is a standing check that nothing in the pricing is inverted — a sign error would produce a
+table that is entirely plausible and exactly backwards.
 
 ### Why the negative control is on the coefficient, not just the metric
 
@@ -1046,6 +1090,35 @@ Then the README's sign-audit table:
 
 _(If they push back — "isn't this just role assignment?" — the within-shooter row is the
 answer: it strips between-player variation and the effect gets stronger, not weaker.)_
+
+### Beat 3b (1.5 min) — what it is worth · open the README `results.selection_priced` block
+
+The single strongest move in the walkthrough, because it argues against your own result.
+
+> "So the effect is real. Here's what it's worth.
+>
+> The shot-mix shift, converted into points at league conversion rates by zone: standard
+> deviation **0.19 points per hundred attempts**. Ninety-seven and a half percent of lineups
+> inside plus or minus half a point.
+>
+> That's nothing. It's a real effect and it's economically negligible, and both halves are
+> the result — because reporting the first without the second is how a real finding turns
+> into an overclaim.
+>
+> One design note on how it's priced. I use **league** conversion rates, not the shooter's
+> own. His own rates would fold the two channels back together, so part of the answer would
+> be 'he shoots better from there' and part 'the lineup got him there' — and separating those
+> is the only reason there are two models. Holding conversion fixed makes the whole remaining
+> difference selection.
+>
+> And it costs nothing, because the first model already told me zone value is
+> lineup-independent as far as this data can tell."
+
+Point at the zone table underneath:
+
+> "Rim one-three-three, corner threes one-one-six, mid-range point-eight-two. That's the shot
+> chart everybody knows, and it's in the generated output on purpose — a sign error in the
+> pricing would produce a table that's completely plausible and exactly backwards."
 
 ### Beat 4 (2 min) — the underpowered verdict · open the README trade block
 
