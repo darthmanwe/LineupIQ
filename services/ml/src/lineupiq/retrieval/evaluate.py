@@ -29,7 +29,13 @@ import numpy as np
 
 from lineupiq.config import SEED
 from lineupiq.retrieval.docs import CORPUS_VARIANTS, LineupDoc, render_document
-from lineupiq.retrieval.index import BM25, RETRIEVERS, LsaIndex, reciprocal_rank_fusion
+from lineupiq.retrieval.index import (
+    BM25,
+    RETRIEVERS,
+    LsaIndex,
+    rank_order,
+    reciprocal_rank_fusion,
+)
 
 __all__ = [
     "Query",
@@ -194,7 +200,7 @@ def evaluate_corpus(
         fused = reciprocal_rank_fusion([bm25_scores, lsa_scores])
 
         for name, scores in (("bm25", bm25_scores), ("lsa", lsa_scores), ("rrf", fused)):
-            order = np.argsort(-scores)
+            order = rank_order(scores)
             ranked = [doc_ids[int(i)] for i in order]
             result = _metrics(ranked, query.relevant, k)
             accumulated[name].append(result)

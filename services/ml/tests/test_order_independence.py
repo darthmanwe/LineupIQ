@@ -102,3 +102,51 @@ def test_parity_fixtures_reproduce(paths: DataPaths) -> None:
 
     drifts = check_fixtures(paths)
     assert not drifts, "\n".join(str(d) for d in drifts[:10])
+
+
+def test_rank_order_breaks_ties_by_index() -> None:
+    """Ties must resolve the same way on every machine.
+
+    `np.argsort` defaults to an unstable quicksort, and reciprocal-rank fusion
+    produces exact ties constantly -- any two documents holding the same pair of
+    ranks across the two legs sum to the same fused score. An unstable sort left
+    their order to the partitioning, which moved a published MRR from 0.950 to
+    0.967 between two machines with Recall@10 identical to sixteen digits.
+    """
+    import numpy as np
+
+    from lineupiq.retrieval.index import rank_order
+
+    scores = np.array([0.5, 0.9, 0.5, 0.9, 0.1])
+    order = rank_order(scores)
+    # Best first, and among equals the lower index first.
+    assert order.tolist() == [1, 3, 0, 2, 4]
+
+
+def test_rank_order_is_immune_to_last_place_noise() -> None:
+    """A one-bit difference must not decide an ordering.
+
+    BM25 sums and cosine similarities are not bit-portable, so two documents
+    whose real scores are equal can arrive differing in the last place. Rounding
+    before comparing turns that back into the exact tie it should have been.
+    """
+    import numpy as np
+
+    from lineupiq.retrieval.index import rank_order
+
+    base = np.array([0.4, 0.4, 0.4])
+    jittered = base + np.array([0.0, np.spacing(0.4), -np.spacing(0.4)])
+    assert rank_order(base).tolist() == rank_order(jittered).tolist()
+
+
+def test_fusion_is_immune_to_last_place_noise() -> None:
+    import numpy as np
+
+    from lineupiq.retrieval.index import reciprocal_rank_fusion
+
+    lexical = np.array([3.0, 1.0, 2.0, 1.0])
+    dense = np.array([0.2, 0.8, 0.2, 0.8])
+    jitter = np.spacing(1.0)
+    fused = reciprocal_rank_fusion([lexical, dense])
+    nudged = reciprocal_rank_fusion([lexical + jitter, dense - jitter])
+    assert np.allclose(fused, nudged, rtol=0, atol=1e-12)

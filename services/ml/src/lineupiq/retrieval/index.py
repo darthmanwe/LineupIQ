@@ -35,6 +35,7 @@ __all__ = [
     "RETRIEVERS",
     "RRF_K",
     "LsaIndex",
+    "rank_order",
     "reciprocal_rank_fusion",
     "tokenise",
 ]
@@ -153,6 +154,43 @@ class LsaIndex:
         return self._matrix @ (vector[0] / norm)
 
 
+#: Decimal places scores are rounded to before they are ranked.
+#:
+#: Ranking is a comparison, so a difference of one bit in the last place decides
+#: an ordering as firmly as a difference of one whole point. BM25 sums and cosine
+#: similarities are not bit-portable -- the same corpus scored with the same
+#: library versions differs in the last place between platforms, because the
+#: BLAS underneath does -- so two documents whose real scores are equal can come
+#: back in either order.
+#:
+#: Rounding first makes near-ties into exact ties, which :func:`rank_order` then
+#: breaks deterministically. Nine places is far below any difference that
+#: distinguishes two documents and far above the noise.
+_RANK_PRECISION = 9
+
+
+def rank_order(scores: np.ndarray) -> np.ndarray:
+    """Indices of ``scores``, best first, deterministically.
+
+    Two properties, and both had to be added after the fact:
+
+    **A stable sort.** ``np.argsort`` defaults to quicksort, which is not stable,
+    so the order among tied scores is whatever the partitioning produced -- and
+    that can differ with array size, memory layout or SIMD path. This is not a
+    corner case here: reciprocal-rank fusion sums ``1/(k + rank)``, so any two
+    documents holding the same pair of ranks across the two legs tie *exactly*,
+    and ties are the norm rather than the exception. ``kind="stable"`` resolves
+    them by index, which is the same on every machine.
+
+    **Rounding before comparing.** See :data:`_RANK_PRECISION`.
+
+    This was found by a published metric moving: MRR on the fused retriever came
+    out 0.950 on one machine and 0.967 on another, with Recall@10 identical to
+    sixteen digits. The same documents, in a different order.
+    """
+    return np.argsort(-np.round(scores, _RANK_PRECISION), kind="stable")
+
+
 def reciprocal_rank_fusion(score_sets: list[np.ndarray], *, k: int = RRF_K) -> np.ndarray:
     """Fuse rankings by reciprocal rank, ignoring the scores themselves.
 
@@ -164,7 +202,7 @@ def reciprocal_rank_fusion(score_sets: list[np.ndarray], *, k: int = RRF_K) -> n
         return np.zeros(0)
     fused = np.zeros_like(score_sets[0], dtype=float)
     for scores in score_sets:
-        order = np.argsort(-scores)
+        order = rank_order(scores)
         ranks = np.empty_like(order)
         ranks[order] = np.arange(len(scores))
         fused += 1.0 / (k + ranks + 1)
