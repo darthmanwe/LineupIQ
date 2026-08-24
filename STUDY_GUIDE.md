@@ -788,7 +788,7 @@ Two lessons, and the second is the one I would actually want to be asked about:
 The practical consequence: **`train --verify` is trusted from CI, on Linux runners, not from
 this machine.** `repro.yml` is where the claim lives.
 
-### And running it there found two real bugs immediately
+### And running it there found five real bugs immediately
 
 Moving the gate to Linux was not just a workaround. The first CI run **completed** and
 reported 60 metrics moved — which is a far more useful failure than a crash.
@@ -807,7 +807,37 @@ Sorting the hashes before permuting fixes it. `tests/test_split_determinism.py` 
 property rather than the numbers — shuffle the corpus, reverse it, and fold membership must be
 identical.
 
-**And a 1e-6 tolerance on a binned estimator was never meaningful.** ECE and the Brier
+**And it was not one bug.** Once the shape was named — _a sort whose key has ties, over a
+`group_by` that makes no ordering promise_ — it turned up in four more places, all of them
+shipped, none of them raising anything:
+
+| Where               | Tied key                                        | What it silently changed                                 |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| `eval/splits.py`    | list order out of `group_by`                    | fold membership                                          |
+| `serve/parity.py`   | stint seconds (whole numbers, 49,827 groups)    | 30 of 2,604 parity cases swapped                         |
+| `retrieval/docs.py` | possession count                                | **which 200 documents the groundedness harness scored**  |
+| `serve/export.py`   | attempt count                                   | _which player_ ships as the low-volume worked example    |
+| `io/gold.py`        | `unique(keep="first")` with no `maintain_order` | which of a player's rows survives — so possibly his name |
+
+The retrieval one had already moved a published number. `player_scope` failures came out 197
+on this machine and 198 on the runner, so the hallucinating template's grounded rate was
+0.015 here and 0.010 there. **A rate that changes with the core count is not a measurement**,
+and it had been in the README.
+
+`tests/test_order_independence.py` pins the property for each: permute the input rows three
+ways — as given, reversed, shuffled — and the derived order must be identical. Row order is
+the deterministic proxy for what a different thread count does to a parallel aggregation, so
+a test that survives permutation is safe from the whole class.
+
+The generalisable point, and the one I would want to be asked about: **a seed does not make
+something reproducible.** `default_rng(SEED)` was doing exactly what it promised. What it
+promised was a fixed permutation of _positions_, and nothing in the code established what was
+at each position. The randomness was pinned and the ordering was not, which looks identical
+from inside a single machine.
+
+### The tolerance was also wrong, in the other direction
+
+**A 1e-6 tolerance on a binned estimator was never meaningful.** ECE and the Brier
 reliability/resolution split sort predictions into bins, so they are _discontinuous in the
 predictions_: a value sitting on a bin edge moves by 1e-16 — ordinary BLAS variation between
 two machines' matrix multiplies — and lands in the next bin.

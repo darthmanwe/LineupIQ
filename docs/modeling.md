@@ -254,3 +254,37 @@ One genuine consequence for the memory cap: a fixed 6 GB default was wrong in bo
 directions — generous on a laptop, and tight enough on a 64 GB workstation to block a
 legitimate refit and read as a reproducibility failure. It now derives from physical RAM, a
 quarter of it, clamped to 4–24 GB.
+
+---
+
+## Order dependence, and why a seed is not reproducibility
+
+Running the gate on a second platform found the same bug shape in five places. It is worth
+naming precisely: **a sort whose key has ties, applied to the output of a `group_by`, which
+makes no ordering promise.** Nothing raises. Every individual number stays plausible.
+
+| Where               | Tied key                                        | What it changed                                       |
+| ------------------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `eval/splits.py`    | list order out of `group_by`                     | cross-validation fold membership                      |
+| `serve/parity.py`   | stint seconds                                    | 30 of 2,604 parity cases swapped                      |
+| `retrieval/docs.py` | possession count                                 | which 200 documents the groundedness harness scored   |
+| `serve/export.py`   | attempt count                                    | which player ships as the low-volume worked example   |
+| `io/gold.py`        | `unique(keep="first")` with no `maintain_order`   | which of a player's rows survives                     |
+
+The retrieval one had already moved a published number: the hallucinating template's grounded
+rate was 0.015 on one machine and 0.010 on another, from `player_scope` failures of 197 versus
+198. That figure was in the README.
+
+Every site now sorts on a total key — the tied column plus an id or a hash. The regenerated
+numbers move slightly and the conclusions do not: the full corpus still beats the per-stint
+event log by 15x on Recall@10, BM25 still beats the hybrid on MRR and nDCG@10, and the
+hallucinating template still scores about 1%.
+
+**The generalisable point.** `np.random.default_rng(SEED)` was doing exactly what it
+promised: producing a fixed permutation of *positions*. Nothing in the code established what
+was *at* each position. A pinned seed over an unpinned ordering is not reproducible, and from
+inside a single machine the two are indistinguishable — which is why this held for months and
+then failed on the first run somewhere else.
+
+`tests/test_order_independence.py` and `tests/test_split_determinism.py` pin the property
+rather than the values: permute the input rows, and the derived order must not move.
