@@ -616,14 +616,65 @@ unconstrained gradient-boosted fit and the log-loss gap goes in the README.
 
 ### Why parity is proved, not assumed
 
-The Worker re-implements the lineup hash and the support tier. Neither disagreement raises
-anything: a hash mismatch returns zero rows everywhere and looks like missing data; a tier
-mismatch serves a confident number where Python would have refused.
+The Worker re-implements three things: the lineup hash, the support tier, and the entire
+served selection model. None of the three raises on disagreement — a hash mismatch returns
+zero rows and looks like missing data, a tier mismatch serves a confident number where Python
+would have refused, and a scorer mismatch serves a plausible shot mix that is wrong.
 
-So Python writes its answers for 2,604 cases to a committed fixture and a vitest suite
-running **inside workerd** asserts TypeScript reproduces them. All three tiers are exercised
-— and getting `reportable` cases into the fixture required sampling _real_ lineups, because
-random five-player draws produce **zero** of them.
+So Python writes its answers to committed fixtures and vitest suites running **inside
+workerd** assert TypeScript reproduces them, to 1e-9.
+
+| Fixture                      | Cases | Covers                                                 |
+| ---------------------------- | ----- | ------------------------------------------------------ |
+| `data/parity/lineups.json`   | 2,604 | MD5, numeric canonicalisation, all three support tiers |
+| `data/parity/selection.json` | 507   | Every utility, both softmaxes, every fallback          |
+
+Three details in the design that are the actual content of this section:
+
+**Both sides read the exported contract, not the fitted object.** The Python scorer in
+`serve/score.py` takes the same rounded JSON the Worker gets, rather than the in-memory
+`SelectionProfiles`. If it used full float64 and the Worker used the serialised values, a
+parity failure could mean either a real disagreement or a rounding artefact — and the usual
+resolution to that ambiguity is loosening the tolerance until it passes. Reading the same
+contract means a failure can only be one thing.
+
+**Utilities are asserted, not only the predicted mix.** A softmax is a contraction:
+implementations differing in the fourth decimal of a utility can still agree to 1e-9 on the
+resulting share for the small zones. And a disagreement about _which alternative is pinned at
+zero_ shifts every utility by a constant and leaves every mix identical — invisible after
+normalisation, so there is a separate test for it.
+
+**`meanRate` in TypeScript is a written-out loop, not `reduce`.** Floating-point addition is
+not associative, so it has to accumulate left to right in the same order as Python's `sum()`.
+This is the kind of thing that passes at 1e-6 and fails at 1e-9, which is a reason to set the
+tolerance at 1e-9.
+
+Getting the branches that matter into a fixture took deliberate construction in both cases.
+`reportable` support tiers required sampling _real_ lineups, because random five-player draws
+produce **zero** of them. The scorer fixture needed an unseen shooter, a two-man lineup, an
+empty defence, and a team-season that never existed — none of which a random draw produces
+either, and all of which are exactly where a fallback can differ between two languages.
+
+### One component, two quantities: the `MetricSpec`
+
+The court heatmap was hard-wired to expected points per attempt — the label in each zone, the
+hover sentence, the table headers, the phrase "below the N-attempt floor". Serving the
+selection model needed the same court to show a second quantity: the share of a shooter's
+attempts a lineup moves into each zone.
+
+They are not interchangeable. Different units. Different size of an interesting effect: 0.2
+points versus 0.003 of a share. And the support floor is counting different things —
+attempts in one case, possessions in the other.
+
+So the vocabulary became a parameter. `POINTS_PER_ATTEMPT` and `ATTEMPT_SHARE` each supply
+the formatters and the nouns, and everything a reader sees comes from the spec. The
+alternative — one court that keeps saying "points per attempt" over a chart of something
+else — is the kind of thing that survives review because the colours look right.
+
+The share court also fixes its colour domain at ±1 percentage point rather than fitting it to
+the response. A domain that renormalised per request would paint a 0.1-point shift the same
+crimson as a 5-point one, and **every lineup would look decisive**. The domain is stated in
+the caption, and it means two lineups scored in sequence are comparable.
 
 ### The generated-numbers rule
 
@@ -737,6 +788,47 @@ Two lessons, and the second is the one I would actually want to be asked about:
 The practical consequence: **`train --verify` is trusted from CI, on Linux runners, not from
 this machine.** `repro.yml` is where the claim lives.
 
+### And running it there found two real bugs immediately
+
+Moving the gate to Linux was not just a workaround. The first CI run **completed** and
+reported 60 metrics moved — which is a far more useful failure than a crash.
+
+**The split depended on how many cores the machine had.** `leave_lineup_out` permutes a list
+of lineup hashes with a fixed seed. The list came out of a parallel `group_by`, which makes no
+ordering promise: its output order depends on the thread-pool size and on where the partitions
+fell. A seeded permutation of a differently ordered list is a _different set of folds_.
+
+The tell was one metric in the list: `uncertainty`, which is just the variance of the held-out
+labels. It cannot move unless the held-out rows changed. Everything else moving was consistent
+with arithmetic drift; that one was not, and it converted "the numbers wobbled" into "the
+split is not a function of the data."
+
+Sorting the hashes before permuting fixes it. `tests/test_split_determinism.py` pins the
+property rather than the numbers — shuffle the corpus, reverse it, and fold membership must be
+identical.
+
+**And a 1e-6 tolerance on a binned estimator was never meaningful.** ECE and the Brier
+reliability/resolution split sort predictions into bins, so they are _discontinuous in the
+predictions_: a value sitting on a bin edge moves by 1e-16 — ordinary BLAS variation between
+two machines' matrix multiplies — and lands in the next bin.
+
+Measured, on identical folds: `log_loss` and `brier` held to 1e-6 while `ece` moved 2.5e-4.
+The predictions agreed; the binning of them did not.
+
+Those four metrics now get 1e-3, and the drift report names which tolerance it applied. This
+is not a weakened gate. A 20-bin ECE on ~100k held-out shots has a sampling standard error of
+order 1e-3, so 1e-6 was never a statement about the estimator — it was a statement about one
+machine's floating point. What the gate exists to catch is a _changed model_, and a changed
+model does not move ECE by 1e-4 while leaving log loss at 1e-9.
+
+**The follow-on problem, and `refit.yml`.** If this machine intermittently corrupts memory,
+every number it computed is suspect — including the committed baselines that `--verify`
+compares against. A gate calibrated to a fault is worse than no gate. So `refit.yml`
+regenerates the run logs on a runner and uploads them as an artifact, with a provenance file
+recording the commit, the OS, and every library version. It deliberately does **not** commit
+them: a workflow that pushed its own baseline could ratchet a regression in with nothing to
+notice.
+
 Also added: progress output and **partial run-log checkpoints after each CV split**, so a
 20-minute job interrupted at minute 18 keeps its finished folds. That earned its place
 immediately — the very next run was killed and the walk-forward results survived.
@@ -759,6 +851,8 @@ Keep this list. It is the most credible part of the story.
 | `nan` silently became `0.0`                                | Variance decomposition read "0%"                | Reported a decomposition never computed                  |
 | Placebo sign agreement read 0.0%                           | `sign(0)` matches neither ±1                    | A meaningless statistic on the arm that matters          |
 | Three wrong diagnoses of one crash                         | Each fix moved the fault instead of removing it | **The machine, not the code** — see the hardware section |
+| A CV split that depended on the machine's core count       | `uncertainty` moved, and it cannot              | Different folds on every machine; `--verify` meaningless |
+| A 1e-6 gate on a discontinuous binned estimator            | `ece` moved 2.5e-4 while `log_loss` held        | A reproducibility failure that was really BLAS variation |
 | `build_features` materialised whole list columns           | Peak climbed 1,097 → 2,604 MB across folds      | Allocator fragmentation; memory never returned           |
 | The negative control round-tripped a column through Python | Same run, after every fold had passed           | ~1 GB of small objects for an identical result           |
 | Exported JSON contained bare `NaN`                         | Worker test could not parse its fixture         | **Invalid JSON — a 500 in production**                   |
@@ -787,9 +881,14 @@ report renderer is pure ASCII.
 - Hand-graded retrieval queries (40 of them). Programmatic judgements are the honest
   substitute and are labelled as such.
 - The Workers AI dense retrieval leg.
-- The **per-lineup** surface: picking five players and scoring for them needs the served
-  closed-form scorer. The court heatmap itself is live, at league scale and for two worked
-  examples. The trade and evidence pages remain static shells.
+- The **lineup optimizer**: searching over combinations rather than scoring one you chose.
+  Scoring is live — `POST /api/lineups/score`, with a picker on the Lineup page — so what is
+  missing is the concave allocator and the search, not the model.
+- The trade simulator's served deltas. The backtest exists and its own verdict is
+  `UNDERPOWERED`; serving a projection whose power analysis says no accuracy claim follows
+  would be the exact failure this repository is built to avoid, so the route stays at `501`
+  until there is either more data or an honest interval to serve.
+- The evidence page remains a static shell.
 - Playwright media capture, and the deploy itself — `wrangler login` is an interactive
   browser OAuth flow.
 
@@ -959,6 +1058,37 @@ Then `apps/api/test/parity.test.ts`:
 > asserts TypeScript reproduces them. Getting `reportable` cases into that fixture needed real
 > lineups; random five-player draws produce zero of them."
 
+### Beat 6 (2 min) — the served model · open `apps/api/test/selection-parity.test.ts`
+
+> "The Worker doesn't just re-implement the tier — it re-implements the whole served model.
+> Nine utilities and a softmax. That's what makes the counterfactual possible: any five of
+> four hundred and fifty players is 1.5 times ten to the eleven combinations, so nothing could
+> have been precomputed.
+>
+> Five hundred and seven cases, agreement to 1e-9. Three things about how it's set up matter
+> more than the number.
+>
+> **Both sides read the exported JSON, not the fitted object.** If Python used full precision
+> and the Worker used the serialised values, a failure could be a real disagreement or a
+> rounding artefact — and the usual fix for that ambiguity is loosening the tolerance.
+>
+> **It asserts the utilities, not just the mix.** A softmax is a contraction, so two
+> implementations can differ in the fourth decimal of a utility and still agree to 1e-9 on the
+> share. And if they disagreed about which zone is pinned at zero, every utility would shift by
+> a constant and every mix would be identical — completely invisible after normalisation.
+> There's a separate test for exactly that.
+>
+> **The mean in the TypeScript is a written-out loop, not a reduce**, because floating-point
+> addition isn't associative and it has to accumulate in Python's order. That's the kind of
+> thing that passes at 1e-6 and fails at 1e-9 — which is the reason to set it at 1e-9."
+
+If there is time, open `apps/web/src/components/LineupScorer.tsx` and point at `DOMAIN`:
+
+> "One percentage point, fixed, never fitted to the response. If the colour scale renormalised
+> per request, a 0.1-point shift would be the same crimson as a 5-point one and every lineup
+> would look decisive. The effects here are genuinely fractions of a point — the deltas sum to
+> zero because attempts live on a simplex — and the chart shows them at that size."
+
 ### Close (1 min) — no files
 
 > "Two things I'd point at as the actual engineering judgement.
@@ -1003,21 +1133,26 @@ Then `apps/api/test/parity.test.ts`:
 | 10  | `services/ml/src/lineupiq/models/support.py`          | The three tiers                                                            |
 | 11  | `apps/api/test/live.test.ts`                          | The 422, and the never-a-point-estimate invariant                          |
 | 12  | `apps/api/test/parity.test.ts`                        | Cross-language parity over 2,604 cases                                     |
+| 12b | `apps/api/src/scoring/selection.ts`                   | The served model: nine utilities and a softmax, in the Worker              |
+| 12c | `apps/api/test/selection-parity.test.ts`              | 507 cases to 1e-9, utilities as well as the mix                            |
 | 13  | `services/ml/src/lineupiq/transform/zone_geometry.py` | Court geometry, generated from the model's own constants                   |
 | 14  | `apps/web/src/components/court/CourtHeatmap.tsx`      | Diverging fill, hatch below the floor, every zone labels its n             |
-| 15  | `services/ml/src/lineupiq/runtime.py`                 | The memory cap, and the ctypes handle bug                                  |
+| 14b | `apps/web/src/components/LineupScorer.tsx`            | The counterfactual, clickable. `DOMAIN` is fixed, never fitted             |
+| 15  | `services/ml/src/lineupiq/runtime.py`                 | The memory cap, the thread cap, and what the crash actually was            |
+| 15b | `services/ml/src/lineupiq/eval/splits.py`             | The sort that makes a fold a function of the data, not the core count      |
 | 16  | `services/ml/tests/test_support.py`                   | The pinned threshold hash — the pre-registration, enforced                 |
 | 17  | `services/ml/src/lineupiq/report/render.py`           | Why numbers are generated, never typed                                     |
 | 18  | `docs/modeling.md`                                    | Every correction, with its magnitude                                       |
 | 19  | `.github/workflows/ci.yml`                            | 13 jobs, all offline and free                                              |
+| 20  | `.github/workflows/refit.yml`                         | Why the baselines are regenerated on a runner and not on this machine      |
 
 **Quick commands to run live:**
 
 ```bash
 cd services/ml
-uv run pytest -q                      # 151 tests, offline, no key
+uv run pytest -q                      # 176 tests, offline, no key
 uv run lineupiq verify                # 13 contracts, 12 gates
 uv run lineupiq report check          # the README is not stale
 uv run lineupiq seasons               # scope, declared once
-cd ../.. && npm --workspace apps/api run test   # 59 tests inside workerd
+cd ../.. && npm --workspace apps/api run test   # 72 tests inside workerd
 ```
