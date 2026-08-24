@@ -95,6 +95,22 @@ def leave_lineup_out(
         .group_by("lineup_for_hash")
         .agg(pl.len().alias("n"))
         .filter(pl.col("n") >= min_shots_per_lineup)
+        # **The sort is load-bearing, not cosmetic.** `group_by` makes no
+        # ordering promise, and polars parallelises it: the output order depends
+        # on the thread-pool size and on how the partitions happened to fall.
+        # The seeded permutation below is applied to *positions*, so an
+        # unordered input means a seeded shuffle of a different list -- which
+        # yields different folds on a machine with a different core count.
+        #
+        # This shipped. `train --verify` reproduced to 1e-6 on the machine that
+        # wrote the run log and moved 60 metrics on a Linux CI runner, including
+        # `uncertainty` -- which is just the variance of the held-out labels and
+        # cannot move unless the held-out rows themselves changed. That was the
+        # tell: not arithmetic drift, a different split.
+        #
+        # A hash is a fixed-width hex string, so sorting it is total and
+        # platform-independent.
+        .sort("lineup_for_hash")
     )
     hashes = eligible["lineup_for_hash"].to_list()
     if len(hashes) < n_folds:

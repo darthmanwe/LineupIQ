@@ -53,16 +53,22 @@ console = Console()
 def _guard_memory(cap_gb: float, *, allow_uncapped: bool) -> None:
     """Impose a hard memory ceiling before any heavy command allocates.
 
-    A training run once drove this machine into swap and took the desktop with
-    it. The allocation bug that caused it is fixed, but the guarantee cannot
-    rest on that: the next model added here will not have been through the same
-    scrutiny. Past the cap an allocation fails and Python raises MemoryError,
-    which is a stack trace instead of a lost afternoon.
+    Two limits, reported together because they guard different failure modes.
 
-    If the cap cannot be applied the command refuses rather than running
-    unprotected, because "we tried to limit it" is not a limit.
+    The **memory cap** bounds what this repository can ask of a machine. Past it
+    an allocation fails and Python raises MemoryError, which is a stack trace
+    instead of a slow slide into swap. If it cannot be applied the command
+    refuses rather than running unprotected -- "we tried to limit it" is not a
+    limit.
+
+    The **thread count** is the hardware-safety limit, and it is read back live
+    rather than assumed: every numeric library fixes its pool size at import, so
+    a variable set too late silently does nothing, and a safety limit that
+    silently failed is worse than none. Four threads of thirty-two means this
+    project never asks for the sustained all-core load that a 13th-generation
+    Intel part is worst at.
     """
-    from lineupiq.runtime import cap_process_memory
+    from lineupiq.runtime import cap_process_memory, thread_pool_report
 
     if cap_gb <= 0:
         if not allow_uncapped:
@@ -70,12 +76,15 @@ def _guard_memory(cap_gb: float, *, allow_uncapped: bool) -> None:
                 "[bold red]Refusing to run uncapped.[/] Pass --allow-uncapped to override."
             )
             raise typer.Exit(code=2)
-        console.print("[yellow]Running with no memory cap, by request.[/]")
+        console.print(
+            f"[yellow]Running with no memory cap, by request.[/] "
+            f"[dim]Threads: {thread_pool_report()}.[/]"
+        )
         return
 
     result = cap_process_memory(cap_gb)
     if result.applied:
-        console.print(f"[dim]{result}[/]")
+        console.print(f"[dim]{result}; threads: {thread_pool_report()}[/]")
         return
 
     console.print(f"[bold red]{result}[/]")
@@ -378,6 +387,7 @@ def train(
 
     from lineupiq.io.gold import load_all_gold
     from lineupiq.models.train import (
+        BINNED_TOLERANCE,
         TOLERANCE,
         compare_to_committed,
         latest_run,
@@ -451,7 +461,10 @@ def train(
             raise typer.Exit(code=2)
         drifts = compare_to_committed(log, committed)
         if drifts:
-            console.print(f"\n[bold red]{len(drifts)} metric(s) moved > {TOLERANCE}[/]")
+            console.print(
+                f"\n[bold red]{len(drifts)} metric(s) moved beyond tolerance[/] "
+                f"[dim]({TOLERANCE:g}, or {BINNED_TOLERANCE:g} for binned estimators)[/]"
+            )
             for drift in drifts[:20]:
                 console.print(f"  - {drift}")
             raise typer.Exit(code=1)
@@ -488,7 +501,13 @@ def selection(
     from lineupiq.features.shot_context import attach_possession_context, context_coverage
     from lineupiq.io.gold import load_all_gold
     from lineupiq.models.selection import SELECTION_TERMS, usable_selection_frame
-    from lineupiq.models.train import TOLERANCE, compare_to_committed, latest_run, write_run_log
+    from lineupiq.models.train import (
+        BINNED_TOLERANCE,
+        TOLERANCE,
+        compare_to_committed,
+        latest_run,
+        write_run_log,
+    )
     from lineupiq.models.train_selection import (
         COUNTERPART,
         SELECTION_LADDER,
@@ -629,7 +648,10 @@ def selection(
             raise typer.Exit(code=2)
         drifts = compare_to_committed(log, committed)
         if drifts:
-            console.print(f"\n[bold red]{len(drifts)} metric(s) moved > {TOLERANCE}[/]")
+            console.print(
+                f"\n[bold red]{len(drifts)} metric(s) moved beyond tolerance[/] "
+                f"[dim]({TOLERANCE:g}, or {BINNED_TOLERANCE:g} for binned estimators)[/]"
+            )
             for drift in drifts[:20]:
                 console.print(f"  - {drift}")
             raise typer.Exit(code=1)

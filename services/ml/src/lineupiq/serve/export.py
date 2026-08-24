@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 from lineupiq.models.support import load_thresholds, thresholds_hash
@@ -337,6 +338,81 @@ def export_selection_model(paths: DataPaths) -> dict[str, Any]:
     }
 
 
+def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
+    """Everything the Worker needs to evaluate the selection model itself.
+
+    ``export_selection_model`` ships the coefficients; this ships the profiles
+    they multiply. Together they are the whole closed form, which is the point of
+    choosing a conditional logit over the gradient-boosted reference: scoring a
+    counterfactual lineup is nine dot products and a softmax, so it fits inside a
+    10 ms CPU budget with room to spare.
+
+    The profiles are refitted here on the **full** corpus, which is the served
+    model -- the same thing ``train_selection`` fits after cross-validation. It
+    is not the fold-wise fit, and it must not be: a served model that had never
+    seen a third of the league would be a worse model for no benefit, because
+    serving is not an evaluation.
+
+    Only players who actually appear are exported. An unseen shooter's log-ratio
+    is exactly zero by construction, so the Worker falls back to the
+    alternative-specific constants rather than to some arbitrary player -- and
+    that fallback needs no data to express.
+    """
+    from lineupiq.io.gold import load_all_gold
+    from lineupiq.models.selection import fit_selection_profiles, zone_attribute
+    from lineupiq.transform.zones import ZONE_IDS
+
+    shots = load_all_gold(paths, "shot_facts").filter(
+        pl.col("lineup_for_hash").is_not_null() & pl.col("lineup_against_hash").is_not_null()
+    )
+    profiles = fit_selection_profiles(shots)
+
+    league = np.log(np.maximum(profiles.league_mix, 1e-12))
+
+    def log_ratio(mix: np.ndarray) -> list[float]:
+        return [_round(v) for v in (np.log(np.maximum(mix, 1e-12)) - league)]
+
+    # Stored as the log ratio rather than the raw mix. The Worker needs only the
+    # ratio, computing it there would duplicate the epsilon clamp in a second
+    # language, and a clamp that disagrees across the boundary is exactly the
+    # class of bug the parity fixture exists to catch.
+    return {
+        "zones": list(ZONE_IDS),
+        "rim": [float(v) for v in zone_attribute("rim")],
+        "three": [float(v) for v in zone_attribute("three")],
+        "league_mix": [_round(v) for v in profiles.league_mix],
+        "shooter_log_ratio": {
+            str(pid): log_ratio(mix) for pid, mix in sorted(profiles.shooter_mix.items())
+        },
+        "shooter_weight": {
+            str(pid): _round(w) for pid, w in sorted(profiles.shooter_weight.items())
+        },
+        "team_log_ratio": {
+            f"{team}:{season}": log_ratio(mix)
+            for (team, season), mix in sorted(profiles.team_mix.items())
+        },
+        "player_three_rate": {
+            str(pid): _round(v) for pid, v in sorted(profiles.player_three_rate.items())
+        },
+        "player_rim_rate": {
+            str(pid): _round(v) for pid, v in sorted(profiles.player_rim_rate.items())
+        },
+        "opp_three_allowed": {
+            str(pid): _round(v) for pid, v in sorted(profiles.opp_three_allowed.items())
+        },
+        "opp_rim_allowed": {
+            str(pid): _round(v) for pid, v in sorted(profiles.opp_rim_allowed.items())
+        },
+        "league_three_rate": _round(profiles.league_three_rate),
+        "league_rim_rate": _round(profiles.league_rim_rate),
+        "seconds_mean": _round(profiles.seconds_mean),
+        "seconds_std": _round(profiles.seconds_std),
+        "shooter_prior_strength": _round(profiles.shooter_prior_strength),
+        "team_prior_strength": _round(profiles.team_prior_strength),
+        "n_shots": shots.height,
+    }
+
+
 def export_evaluation(paths: DataPaths) -> dict[str, Any]:
     """Published evaluation results, so /api/eval/* serves measurements.
 
@@ -475,5 +551,8 @@ def export_all(paths: DataPaths, directory: Path | None = None) -> ExportManifes
         "snapshot.json": _write(target, "snapshot.json", export_snapshot(paths)),
         "evaluation.json": _write(target, "evaluation.json", export_evaluation(paths)),
         "coverage.json": _write(target, "coverage.json", export_coverage(paths)),
+        "selection_profiles.json": _write(
+            target, "selection_profiles.json", export_selection_profiles(paths)
+        ),
     }
     return ExportManifest(files=files)

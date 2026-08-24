@@ -1,16 +1,28 @@
 """Process-level resource limits.
 
-This module exists because a training run took a workstation down. The
-conditional logit's objective was allocating thirteen ``(n_shots, n_zones)``
-matrices per L-BFGS iteration -- about 620 MB of churn per iteration at three
-seasons, several hundred iterations per fit, eighteen fits per pass -- while a
-dense feature matrix and its copy were also resident. The fix to the hot path
-was the right fix. It is not a *guarantee*, because the next model added to this
-repository will not have been through it.
+This module was written after a training run coincided with a workstation
+freezing, and its original docstring said the run caused it. That turned out to
+be wrong, and the correction is worth recording because it is the more useful
+half of the story: the machine had bugchecked four times a month earlier, the
+dump was a kernel-mode access violation (``0x1E``, ``0xC0000005``) that no
+user-space process can produce, and a ninety-line script using nothing but
+numpy and Python dicts reproduced the same faults with this repository entirely
+out of the picture. The fault is hardware. Memory pressure is the load that
+exposes it, not the cause.
 
-So the guarantee is enforced by the operating system instead. A hard cap on the
-process's committed memory turns "the machine froze" into "Python raised
-MemoryError", which is a bug report rather than a lost afternoon.
+What survives is narrower and still worth having. The conditional logit's
+objective really was allocating thirteen ``(n_shots, n_zones)`` matrices per
+L-BFGS iteration -- about 620 MB of churn per iteration at three seasons,
+several hundred iterations per fit, eighteen fits per pass -- while a dense
+feature matrix and its copy were also resident. Fixing the hot path was right,
+but it is not a *guarantee*, because the next model added here will not have
+been through it.
+
+So a ceiling is set at the operating-system level, and the honest claim for it
+is this: it bounds what this repository can ask of a machine, and it turns
+runaway growth into a ``MemoryError`` with a traceback rather than a slow slide
+into swap. It cannot make an unreliable machine reliable, and it should not be
+described as though it could.
 
 Two mechanisms, one per platform:
 
@@ -32,11 +44,13 @@ from dataclasses import dataclass
 
 __all__ = [
     "DEFAULT_MEMORY_CAP_GB",
+    "DEFAULT_THREADS",
     "MemoryBudget",
     "MemoryCapResult",
     "cap_process_memory",
     "limit_thread_pools",
     "peak_process_memory_bytes",
+    "thread_pool_report",
 ]
 
 #: Share of physical memory the default cap allows.
@@ -113,7 +127,23 @@ _THREAD_VARIABLES = (
     "NUMEXPR_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
     "POLARS_MAX_THREADS",
+    # Polars reads its own variable, but other Rust extensions read this one.
+    "RAYON_NUM_THREADS",
 )
+
+#: Threads the numeric pools are allowed. Deliberately small relative to a
+#: modern core count.
+#:
+#: This is a hardware-safety limit, not a performance tuning knob. A sustained
+#: all-core AVX load is the worst thing you can ask of a 13th-generation Intel
+#: part, and this workstation has a documented history of it: four bugchecks in
+#: one day last July, a WHEA corrected machine-check from Processor Core, and a
+#: kernel-mode access violation during this project. The operator's mitigation
+#: (undervolt plus a BIOS update) held for a year under gaming loads, which are
+#: bursty and GPU-bound; a cross-validation refit is neither. Four threads of
+#: thirty-two keeps this repository off that failure mode entirely, and the cost
+#: is wall-clock time on a job that runs nightly in CI anyway.
+DEFAULT_THREADS = 4
 
 
 @dataclass(frozen=True)
@@ -131,7 +161,7 @@ class MemoryCapResult:
         return f"NO memory cap applied ({self.mechanism}: {self.detail})"
 
 
-def limit_thread_pools(threads: int = 4) -> dict[str, str]:
+def limit_thread_pools(threads: int = DEFAULT_THREADS) -> dict[str, str]:
     """Bound every numeric thread pool.
 
     Must run before numpy, polars or scikit-learn are imported -- each reads its
@@ -416,3 +446,27 @@ class MemoryBudget:
         does not model: the polars frames, the interpreter, sklearn's trees.
         """
         return self.peak_bytes > cap_gb * 1e9 * headroom
+
+
+def thread_pool_report() -> str:
+    """What the numeric pools are *actually* running, not what was requested.
+
+    ``limit_thread_pools`` reports the variables it set, which is not the same
+    thing: every one of these libraries reads its pool size once at import, so
+    setting the variable after the import silently does nothing. Reading the
+    live value back is the only way to know the limit took, and this is a
+    hardware-safety limit -- one that silently failed would be worse than none,
+    because the operator would believe they were protected.
+    """
+    parts: list[str] = []
+    try:
+        import polars as pl
+
+        parts.append(f"polars {pl.thread_pool_size()}")
+    except Exception:  # pragma: no cover - polars is a hard dependency
+        pass
+    omp = os.environ.get("OMP_NUM_THREADS")
+    if omp:
+        parts.append(f"OpenMP {omp}")
+    total = os.cpu_count() or 0
+    return f"{', '.join(parts)} of {total} logical CPUs" if parts else "unknown"

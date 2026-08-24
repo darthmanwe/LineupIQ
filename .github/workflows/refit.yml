@@ -1,0 +1,84 @@
+name: Refit
+
+# Regenerate the committed run logs, on demand, on a machine that can be trusted.
+#
+# This exists because of a specific problem. The workstation this project is
+# developed on has a hardware fault -- a kernel-mode bugcheck, a WHEA corrected
+# machine-check from Processor Core, and a ninety-line numpy script that
+# reproduces random access violations with this repository entirely out of the
+# picture. Under sustained memory pressure it produces wrong answers, not just
+# crashes.
+#
+# That makes every number it computes suspect, which is a methodological problem
+# and not only an inconvenience: `train --verify` asserts a refit reproduces the
+# committed metrics to 1e-6, and a committed metric that was itself computed
+# through a silent bit flip is a gate calibrated to a fault.
+#
+# So the run logs are regenerated here and downloaded, rather than written
+# locally. The artifact is the input to a commit; the commit is still a human
+# decision, because a workflow that pushed its own metrics could ratchet a
+# regression into the baseline with nothing to notice.
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Which models to refit"
+        type: choice
+        default: both
+        options: [both, conversion, selection]
+
+env:
+  ANTHROPIC_API_KEY: ""
+  LINEUPIQ_LLM_MAX_CALLS: "0"
+
+concurrency:
+  group: refit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  refit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+
+      - name: Record what produced these numbers
+        run: |
+          {
+            echo "commit: ${{ github.sha }}"
+            echo "runner: ${{ runner.os }} ${{ runner.arch }}"
+            uv run python -c "import sys, platform; print('python:', sys.version.split()[0], platform.machine())"
+            uv run python -c "import polars, numpy, sklearn, scipy; print('polars:', polars.__version__); print('numpy:', numpy.__version__); print('scikit-learn:', sklearn.__version__); print('scipy:', scipy.__version__)"
+            uv run python -c "import polars; print('polars threads:', polars.thread_pool_size())"
+          } | tee runs/PROVENANCE.txt
+
+      - name: Refit the conversion model
+        if: inputs.models == 'both' || inputs.models == 'conversion'
+        run: uv run lineupiq train --memory-cap-gb 12
+
+      - name: Refit the selection model
+        if: inputs.models == 'both' || inputs.models == 'selection'
+        run: uv run lineupiq selection --memory-cap-gb 12
+
+      # Shown in the log so the diff is reviewable without downloading anything.
+      - name: What moved
+        working-directory: .
+        run: git --no-pager diff --stat -- services/ml/runs/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: run-logs
+          path: |
+            services/ml/runs/**/*.json
+            services/ml/runs/PROVENANCE.txt
+          if-no-files-found: error
