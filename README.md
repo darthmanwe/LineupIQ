@@ -641,8 +641,9 @@ cd services/ml && uv sync --extra dev
 uv run pytest                    # offline and free by default
 uv run lineupiq seasons          # declared scope, stated in exactly one place
 uv run lineupiq verify           # re-derive every gold checksum + run the DQ gates
-uv run lineupiq train --verify   # refit and assert the committed metrics reproduce
+uv run lineupiq parity --check   # the Python/TypeScript contract, both fixtures
 uv run lineupiq support          # the pre-registered refusal thresholds
+uv run lineupiq report check     # the README is not stale
 
 # TypeScript: API and web
 cd ../.. && npm ci
@@ -650,6 +651,13 @@ npm --workspace apps/api run test     # runs inside workerd
 npm --workspace apps/web run build    # static export
 npm run dev                           # http://127.0.0.1:8787
 ```
+
+`lineupiq train --verify` and `lineupiq selection --verify` refit both models from scratch
+and assert every committed metric reproduces. They are deliberately **not** in the list above:
+between them they are tens of minutes of compute, and they run nightly on Linux runners
+([`repro.yml`](.github/workflows/repro.yml)) rather than on the machine this was developed on
+— see the reproducibility note under "What this is not" for why that distinction is real and
+not fastidiousness.
 
 `lineupiq build` re-ingests from upstream (~88 MB, a couple of minutes). Everything else
 runs against committed gold with no network.
