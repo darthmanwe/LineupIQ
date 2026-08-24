@@ -331,8 +331,8 @@ export function mountLive(app: App): void {
    * *distribution over zones*, not a points estimate. That is a deliberate
    * change of question. The conversion model -- does a lineup make a player
    * shoot better from the same spot -- was built first, fully evaluated, and
-   * came back at +0.019% log loss against a passing negative control. It is not
-   * a real effect. Shot **selection** is: +0.082% on unseen five-man
+   * came back at +0.02% log loss against a passing negative control. It is not
+   * a real effect. Shot **selection** is: +0.08% on unseen five-man
    * combinations. Lineup construction operates on which shots get taken, so
    * that is what is served.
    *

@@ -119,7 +119,7 @@ export const ROUTES: readonly RouteSpec[] = [
     // Not what this route was originally specced to serve, and the change is
     // the finding. It was going to return per-zone EPSA -- how well a lineup
     // makes a player shoot from a given spot. That was built, evaluated
-    // against a full baseline ladder, and came back at +0.019% log loss on
+    // against a full baseline ladder, and came back at +0.02% log loss on
     // unseen combinations: nothing. Shot *selection* is where the effect lives,
     // so the route serves a distribution over zones and the delta against the
     // league-average lineup.

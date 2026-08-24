@@ -32,8 +32,8 @@ were each seen during training.
 
 | Question | Target | Lineup context adds |
 | --- | --- | --- |
-| Does he make it? | `P(make \| shooter, zone, lineup)` | **+0.019%** log loss (served) |
-| Which shot does he take? | `P(zone \| shooter, lineup, context)` | **+0.082%** log loss (served), **+0.092%** (unconstrained) |
+| Does he make it? | `P(make \| shooter, zone, lineup)` | **+0.02%** log loss (served) |
+| Which shot does he take? | `P(zone \| shooter, lineup, context)` | **+0.08%** log loss (served), and the same unconstrained |
 
 Measuring conversion and concluding "lineups don't matter" answers the wrong question
 well. Spacing does not make a player a better corner shooter; it gets him _a corner three
@@ -240,29 +240,29 @@ allowed to say _loses_.
 
 | Model | Log loss | Brier | Resolution | ECE | Cal. slope | Verdict |
 |---|---|---|---|---|---|---|
-| B0 - league zone mean | 0.66035 | 0.23385 | 0.01564 | 0.0096 | 0.991 |  |
-| B1 - shooter x zone (shrunk) | 0.65784 | 0.23269 | 0.01704 | 0.0092 | 0.970 |  |
-| B2 - B1 + context, no lineup | 0.65696 | 0.23231 | 0.01734 | 0.0107 | 0.941 |  |
-| B3 - additive GBDT, no lineup | 0.65251 | 0.23035 | 0.01945 | 0.0150 | 0.926 |  |
-| **full - served closed form** | 0.65683 | 0.23226 | 0.01737 | 0.0105 | 0.939 | +0.019% vs B2 |
-| **full - unconstrained GBDT** | 0.65200 | 0.23014 | 0.01961 | 0.0141 | 0.932 | +0.078% vs B3 |
+| B0 - league zone mean | 0.66036 | 0.23385 | 0.01566 | 0.0106 | 0.991 |  |
+| B1 - shooter x zone (shrunk) | 0.65780 | 0.23267 | 0.01705 | 0.0104 | 0.972 |  |
+| B2 - B1 + context, no lineup | 0.65692 | 0.23230 | 0.01734 | 0.0107 | 0.943 |  |
+| B3 - additive GBDT, no lineup | 0.65242 | 0.23031 | 0.01951 | 0.0143 | 0.928 |  |
+| **full - served closed form** | 0.65681 | 0.23224 | 0.01739 | 0.0106 | 0.941 | +0.018% vs B2 |
+| **full - unconstrained GBDT** | 0.65202 | 0.23014 | 0.01963 | 0.0141 | 0.932 | +0.061% vs B3 |
 
 **Walk-forward -- later games** -- n = 404,712 shots
 
 | Model | Log loss | Brier | Resolution | ECE | Cal. slope | Verdict |
 |---|---|---|---|---|---|---|
 | B0 - league zone mean | 0.65895 | 0.23316 | 0.01556 | 0.0061 | 1.000 |  |
-| B1 - shooter x zone (shrunk) | 0.65712 | 0.23231 | 0.01678 | 0.0088 | 0.976 |  |
+| B1 - shooter x zone (shrunk) | 0.65712 | 0.23231 | 0.01679 | 0.0088 | 0.976 |  |
 | B2 - B1 + context, no lineup | 0.65608 | 0.23186 | 0.01715 | 0.0093 | 0.941 |  |
 | B3 - additive GBDT, no lineup | 0.65991 | 0.23278 | 0.01792 | 0.0255 | 0.770 |  |
 | **full - served closed form** | 0.65609 | 0.23187 | 0.01715 | 0.0103 | 0.938 | -0.003% vs B2 |
 | **full - unconstrained GBDT** | 0.65646 | 0.23186 | 0.01813 | 0.0233 | 0.821 | +0.524% vs B3 |
 
-**Cost of the serving constraint:** the closed form the Worker evaluates is 0.74% worse in log loss than the unconstrained gradient-boosted fit on unseen lineups. That is the price of exact Python<->TypeScript parity inside a 10 ms CPU budget, and it is published rather than absorbed.
+**Cost of the serving constraint:** the closed form the Worker evaluates is 0.73% worse in log loss than the unconstrained gradient-boosted fit on unseen lineups. That is the price of exact Python<->TypeScript parity inside a 10 ms CPU budget, and it is published rather than absorbed.
 
 **Negative control:** with lineup context randomly permuted across shots, the model's log-loss gain over B1 is +0.000796 -- indistinguishable from zero, so the lineup features are not leaking. Control passes.
 
-_Generated from run `dcbcb33` on Windows, seed 20260815, 672,772 shots across 3 seasons._
+_Generated from run `525671c` on Linux, seed 20260815, 672,772 shots across 3 seasons._
 <!-- lineupiq:end id=results.model -->
 
 ### How to read the ladder
@@ -299,19 +299,19 @@ fitted**. The audit below reports how many came out that way, and it is not a cl
 
 | Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
 |---|---|---|---|---|---|
-| S0 - league zone mix | 1.79950 | 0.2939 | 0.67107 | 0.00031 |  |
-| S1 - shooter's own shrunk mix (lookup table) | 1.65925 | 0.3701 | 0.59580 | 0.03097 |  |
-| S2 - conditional logit, no lineup | 1.65265 | 0.3712 | 0.59476 | 0.03141 |  |
-| S3 - multiclass GBDT, no lineup | 1.61548 | 0.3952 | 0.58357 | 0.03590 |  |
-| **full - conditional logit + lineup (served)** | 1.65130 | 0.3718 | 0.59363 | 0.03184 | +0.082% vs S2 |
-| **full - GBDT + lineup (unconstrained)** | 1.61400 | 0.3953 | 0.58334 | 0.03601 | +0.092% vs S3 |
+| S0 - league zone mix | 1.79948 | 0.2939 | 0.67106 | 0.00036 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.65907 | 0.3701 | 0.59577 | 0.03094 |  |
+| S2 - conditional logit, no lineup | 1.65248 | 0.3712 | 0.59472 | 0.03140 |  |
+| S3 - multiclass GBDT, no lineup | 1.61532 | 0.3951 | 0.58345 | 0.03597 |  |
+| **full - conditional logit + lineup (served)** | 1.65113 | 0.3718 | 0.59360 | 0.03184 | +0.082% vs S2 |
+| **full - GBDT + lineup (unconstrained)** | 1.61400 | 0.3954 | 0.58342 | 0.03596 | +0.082% vs S3 |
 
 **Walk-forward -- later games** -- n = 403,797 attempts
 
 | Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
 |---|---|---|---|---|---|
 | S0 - league zone mix | 1.80105 | 0.2848 | 0.67683 | 0.00014 |  |
-| S1 - shooter's own shrunk mix (lookup table) | 1.67963 | 0.3642 | 0.60810 | 0.02894 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.67963 | 0.3642 | 0.60810 | 0.02895 |  |
 | S2 - conditional logit, no lineup | 1.67406 | 0.3648 | 0.60731 | 0.02936 |  |
 | S3 - multiclass GBDT, no lineup | 1.64243 | 0.3861 | 0.59678 | 0.03348 |  |
 | **full - conditional logit + lineup (served)** | 1.67283 | 0.3650 | 0.60630 | 0.02973 | +0.073% vs S2 |
@@ -326,8 +326,8 @@ confirmation of the thing it was named after.
 |---|---|---|---|---|
 | `into_possession_x_rim` | -0.3691 | - | agrees |  |
 | `live_ball_x_rim` | +0.0871 | + | agrees |  |
-| `opp_rim_allowed_x_rim` | +1.4821 | + | agrees | yes |
-| `opp_three_allowed_x_three` | +1.7605 | + | agrees | yes |
+| `opp_rim_allowed_x_rim` | +1.4822 | + | agrees | yes |
+| `opp_three_allowed_x_three` | +1.7604 | + | agrees | yes |
 | `second_chance_x_rim` | +0.2529 | + | agrees |  |
 | `shooter_mix` | +0.9958 | + | agrees |  |
 | `spacing_min_x_three` | +0.0968 | + | agrees | yes |
@@ -344,15 +344,15 @@ spacing than he usually has.
 
 | Term | Headline | Within shooter |
 |---|---|---|
-| `opp_rim_allowed_x_rim` | +1.4821 | +1.4826 |
-| `opp_three_allowed_x_three` | +1.7605 | +1.7942 |
+| `opp_rim_allowed_x_rim` | +1.4822 | +1.4826 |
+| `opp_three_allowed_x_three` | +1.7604 | +1.7941 |
 | `spacing_min_x_three` | +0.0968 | +0.0615 |
 | `spacing_x_three` | -0.4740 | -0.4470 |
 | `teammate_rim_x_rim` | -0.6780 | -0.7114 |
 
 **Negative control.** With the five-man lineups randomly reassigned across attempts, the full model's log-loss gain over S2 is -0.000015 and the `spacing_x_three` coefficient collapses to -0.0169. The second number is the one worth having: a pooled metric can go flat while a coefficient stays large, and this model's claim is directional, so the coefficient is what has to die under shuffling.
 
-_Generated from run `19c905d` on Windows, seed 20260815, 671,251 attempts across 3 seasons._
+_Generated from run `525671c` on Linux, seed 20260815, 671,251 attempts across 3 seasons._
 <!-- lineupiq:end id=results.selection -->
 
 ### What the effect is worth

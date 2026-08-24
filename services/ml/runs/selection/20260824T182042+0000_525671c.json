@@ -1,0 +1,317 @@
+{
+  "controls": {
+    "shuffled_lineup_logloss_gain": -1.4992899244004043e-05,
+    "shuffled_lineup_spacing_coefficient": -0.016883655544802423
+  },
+  "created_at": "2026-08-24T18:20:42+00:00",
+  "git_dirty": true,
+  "git_sha": "525671c",
+  "metrics": {
+    "leave_lineup_out": {
+      "S0": {
+        "classwise_ece": 0.00495761228108298,
+        "log_loss": 1.7994838850162778,
+        "n": 405464.0,
+        "rim_brier": 0.24967939032512323,
+        "rim_log_loss": 0.692505841933722,
+        "rim_resolution": 0.00023867135598876668,
+        "three_brier": 0.23903598429882938,
+        "three_ece": 0.017066827329915484,
+        "three_log_loss": 0.6710577080871433,
+        "three_resolution": 0.0003569666305037473,
+        "top1_accuracy": 0.2939373162598899
+      },
+      "S1": {
+        "classwise_ece": 0.003925197542833987,
+        "log_loss": 1.6590691667487745,
+        "n": 405464.0,
+        "rim_brier": 0.21776800095106796,
+        "rim_log_loss": 0.6202589290269012,
+        "rim_resolution": 0.0317370409952925,
+        "three_brier": 0.20788149390523056,
+        "three_ece": 0.008788932792491055,
+        "three_log_loss": 0.5957672535230438,
+        "three_resolution": 0.03094259703031822,
+        "top1_accuracy": 0.3700969753171675
+      },
+      "S2": {
+        "classwise_ece": 0.004762693810595545,
+        "log_loss": 1.6524752660885673,
+        "n": 405464.0,
+        "rim_brier": 0.21656323542188305,
+        "rim_log_loss": 0.6175369001767139,
+        "rim_resolution": 0.032945055444400136,
+        "three_brier": 0.2074387305494071,
+        "three_ece": 0.009501805068219593,
+        "three_log_loss": 0.594722214727522,
+        "three_resolution": 0.03139600616962077,
+        "top1_accuracy": 0.3712339443205809
+      },
+      "S3": {
+        "classwise_ece": 0.0035795294695833446,
+        "log_loss": 1.6153202528384356,
+        "n": 405464.0,
+        "rim_brier": 0.2117118065341287,
+        "rim_log_loss": 0.6061074942749451,
+        "rim_resolution": 0.03779251988762665,
+        "three_brier": 0.2028962077222933,
+        "three_ece": 0.00866913139031566,
+        "three_log_loss": 0.5834521581666136,
+        "three_resolution": 0.035965252316026805,
+        "top1_accuracy": 0.39509796184124857
+      },
+      "full": {
+        "classwise_ece": 0.004735893708373219,
+        "log_loss": 1.651126399146995,
+        "n": 405464.0,
+        "rim_brier": 0.21602575983622813,
+        "rim_log_loss": 0.6163531314752589,
+        "rim_resolution": 0.03347464398976552,
+        "three_brier": 0.20694886399077703,
+        "three_ece": 0.00761544640433753,
+        "three_log_loss": 0.5935954531945985,
+        "three_resolution": 0.03184499057372939,
+        "top1_accuracy": 0.37177159994475467
+      },
+      "full_gbdt": {
+        "classwise_ece": 0.0032560638263893034,
+        "log_loss": 1.6139984188105685,
+        "n": 405464.0,
+        "rim_brier": 0.21172721584849355,
+        "rim_log_loss": 0.6062238964522075,
+        "rim_resolution": 0.03773882466528542,
+        "three_brier": 0.2028204653459069,
+        "three_ece": 0.006915784417063127,
+        "three_log_loss": 0.5834224413909915,
+        "three_resolution": 0.03595903170992152,
+        "top1_accuracy": 0.395376654894146
+      }
+    },
+    "walk_forward": {
+      "S0": {
+        "classwise_ece": 0.006036984864179438,
+        "log_loss": 1.801049931887538,
+        "n": 403797.0,
+        "rim_brier": 0.24997446335977475,
+        "rim_log_loss": 0.6930962857189382,
+        "rim_resolution": 8.965989959221191e-05,
+        "three_brier": 0.2418786656620537,
+        "three_ece": 0.01871137439481975,
+        "three_log_loss": 0.6768322029718535,
+        "three_resolution": 0.00013913696033758473,
+        "top1_accuracy": 0.28483123945943134
+      },
+      "S1": {
+        "classwise_ece": 0.0074331798709596116,
+        "log_loss": 1.6796257378374795,
+        "n": 403797.0,
+        "rim_brier": 0.2200483395107639,
+        "rim_log_loss": 0.6260931031010571,
+        "rim_resolution": 0.029900700552313877,
+        "three_brier": 0.2127578834270775,
+        "three_ece": 0.018856932503491384,
+        "three_log_loss": 0.6081005672663475,
+        "three_resolution": 0.028948891040187053,
+        "top1_accuracy": 0.36415079854481336
+      },
+      "S2": {
+        "classwise_ece": 0.007834057587074705,
+        "log_loss": 1.674056972782316,
+        "n": 403797.0,
+        "rim_brier": 0.21913054191287037,
+        "rim_log_loss": 0.6239756166452456,
+        "rim_resolution": 0.030792429164239594,
+        "three_brier": 0.21239279020771648,
+        "three_ece": 0.017474121329109048,
+        "three_log_loss": 0.6073120870841078,
+        "three_resolution": 0.029356031102343465,
+        "top1_accuracy": 0.36478973345517673
+      },
+      "S3": {
+        "classwise_ece": 0.006266725546794557,
+        "log_loss": 1.6424344990640494,
+        "n": 403797.0,
+        "rim_brier": 0.21455128263281176,
+        "rim_log_loss": 0.6134315646143884,
+        "rim_resolution": 0.03513667576425288,
+        "three_brier": 0.2080175979981611,
+        "three_ece": 0.011693836258615796,
+        "three_log_loss": 0.5967767272980082,
+        "three_resolution": 0.033481537752691345,
+        "top1_accuracy": 0.38614947609813843
+      },
+      "full": {
+        "classwise_ece": 0.007751412614635388,
+        "log_loss": 1.672831297387576,
+        "n": 403797.0,
+        "rim_brier": 0.21871065311295837,
+        "rim_log_loss": 0.6230841800244656,
+        "rim_resolution": 0.031173172796943743,
+        "three_brier": 0.21193361464264954,
+        "three_ece": 0.016265940363447848,
+        "three_log_loss": 0.6063011999890838,
+        "three_resolution": 0.02973270238924822,
+        "top1_accuracy": 0.36498042333152547
+      },
+      "full_gbdt": {
+        "classwise_ece": 0.006216510392041013,
+        "log_loss": 1.6409176180396556,
+        "n": 403797.0,
+        "rim_brier": 0.21469280044638822,
+        "rim_log_loss": 0.6137690101442521,
+        "rim_resolution": 0.035045571367506384,
+        "three_brier": 0.20813366328629732,
+        "three_ece": 0.011397263433813,
+        "three_log_loss": 0.5970762413367118,
+        "three_resolution": 0.03333253609470535,
+        "top1_accuracy": 0.38652094988323343
+      }
+    }
+  },
+  "model": {
+    "coefficients": [
+      -0.25728175996802094,
+      -1.7857951963490277,
+      -3.454380048024833,
+      -2.25918041029486,
+      -1.5764975290130254,
+      -1.6574548510670344,
+      -1.4685037815113886,
+      -0.10386514256290531,
+      0.9958446331749177,
+      0.34196411679175265,
+      -0.3690835564082964,
+      -0.3246592540374449,
+      0.08708414690355108,
+      0.2529204568063227,
+      0.06339841006430919,
+      -0.4740264610424096,
+      0.09675096342801932,
+      -0.6780424243591925,
+      1.482216049530248,
+      1.7603950675831421
+    ],
+    "converged": true,
+    "l2": 0.0001,
+    "n_iterations": 185,
+    "observed_mix": {
+      "corner_three_left": 0.05389936104378243,
+      "corner_three_right": 0.049689311449815345,
+      "mid_baseline": 0.04691836585718308,
+      "mid_top": 0.029252842826304915,
+      "mid_wing": 0.008865536140728282,
+      "paint_non_ra": 0.22459854808409968,
+      "restricted_area": 0.2905455634330526,
+      "top_three": 0.23584173431398986,
+      "wing_three": 0.060388736851043796
+    },
+    "shooter_prior_strength": 11.017472592461159,
+    "sign_audit": {
+      "into_possession_x_rim": {
+        "expected_sign": -1,
+        "is_lineup": false,
+        "value": -0.3690835564082964,
+        "verdict": "agrees"
+      },
+      "live_ball_x_rim": {
+        "expected_sign": 1,
+        "is_lineup": false,
+        "value": 0.08708414690355108,
+        "verdict": "agrees"
+      },
+      "opp_rim_allowed_x_rim": {
+        "expected_sign": 1,
+        "is_lineup": true,
+        "value": 1.482216049530248,
+        "verdict": "agrees"
+      },
+      "opp_three_allowed_x_three": {
+        "expected_sign": 1,
+        "is_lineup": true,
+        "value": 1.7603950675831421,
+        "verdict": "agrees"
+      },
+      "second_chance_x_rim": {
+        "expected_sign": 1,
+        "is_lineup": false,
+        "value": 0.2529204568063227,
+        "verdict": "agrees"
+      },
+      "shooter_mix": {
+        "expected_sign": 1,
+        "is_lineup": false,
+        "value": 0.9958446331749177,
+        "verdict": "agrees"
+      },
+      "spacing_min_x_three": {
+        "expected_sign": 1,
+        "is_lineup": true,
+        "value": 0.09675096342801932,
+        "verdict": "agrees"
+      },
+      "spacing_x_three": {
+        "expected_sign": 1,
+        "is_lineup": true,
+        "value": -0.4740264610424096,
+        "verdict": "DISAGREES"
+      },
+      "team_mix": {
+        "expected_sign": 1,
+        "is_lineup": false,
+        "value": 0.34196411679175265,
+        "verdict": "agrees"
+      },
+      "teammate_rim_x_rim": {
+        "expected_sign": -1,
+        "is_lineup": true,
+        "value": -0.6780424243591925,
+        "verdict": "agrees"
+      }
+    },
+    "team_prior_strength": 233.00276212004354,
+    "term_names": [
+      "alt_paint_non_ra",
+      "alt_mid_baseline",
+      "alt_mid_wing",
+      "alt_mid_top",
+      "alt_corner_three_left",
+      "alt_corner_three_right",
+      "alt_wing_three",
+      "alt_top_three",
+      "shooter_mix",
+      "team_mix",
+      "into_possession_x_rim",
+      "into_possession_x_three",
+      "live_ball_x_rim",
+      "second_chance_x_rim",
+      "clutch_x_three",
+      "spacing_x_three",
+      "spacing_min_x_three",
+      "teammate_rim_x_rim",
+      "opp_rim_allowed_x_rim",
+      "opp_three_allowed_x_three"
+    ],
+    "within_shooter_coefficients": {
+      "opp_rim_allowed_x_rim": 1.482640776215093,
+      "opp_three_allowed_x_three": 1.7941384414432562,
+      "spacing_min_x_three": 0.06152378239748741,
+      "spacing_x_three": -0.4469658746431232,
+      "teammate_rim_x_rim": -0.7114144236092141
+    }
+  },
+  "n_lineups": 45005,
+  "n_shots": 671251,
+  "notes": [
+    "walk_forward: 4 folds",
+    "leave_lineup_out: 5 folds",
+    "sign audit: 9/10 pre-registered signs agree; DISAGREES: spacing_x_three"
+  ],
+  "platform": "Linux",
+  "python": "3.12.3",
+  "seasons": [
+    2022,
+    2023,
+    2024
+  ],
+  "seed": 20260815
+}

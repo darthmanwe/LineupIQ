@@ -448,7 +448,7 @@ def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
     # conversion, the whole difference is selection.
     #
     # It also happens to cost nothing in accuracy: the conversion model found no
-    # measurable lineup effect (+0.019% log loss on unseen combinations), so zone
+    # measurable lineup effect (+0.02% log loss on unseen combinations), so zone
     # value is, as far as this data can tell, lineup-independent.
     zone_points = {
         str(row[0]): _round(row[1])

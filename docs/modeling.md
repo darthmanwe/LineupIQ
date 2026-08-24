@@ -10,8 +10,8 @@ Numbers quoted here are reproduced by `lineupiq verify`, `lineupiq train` and
 
 The original design had one model: `P(make | shot, lineup)`. It was built, scored against a
 full baseline ladder, and the honest answer came back — on unseen five-man combinations,
-knowing the other four players improves log loss by **+0.019%** for the served closed form
-and **+0.078%** for the unconstrained gradient-boosted fit. Against a passing negative
+knowing the other four players improves log loss by **+0.02%** for the served closed form
+and **+0.06%** for the unconstrained gradient-boosted fit. Against a passing negative
 control, that is nothing.
 
 That result is correct and it is not interesting, because it answers a question nobody was

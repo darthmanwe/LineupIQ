@@ -23,7 +23,7 @@ build if the two disagree.
 If you remember only four things:
 
 1. **The first model asked the wrong question.** `P(make | shot taken)` finds lineup context
-   worth +0.019%. Moving the target to `P(zone | shooter, lineup)` — which shot gets taken —
+   worth +0.02%. Moving the target to `P(zone | shooter, lineup)` — which shot gets taken —
    quadruples that. Spacing does not make a better corner shooter; it produces a corner
    three instead of a contested pull-up.
 2. **A pre-registered coefficient came out backwards, and it stayed published.**
@@ -253,8 +253,8 @@ coefficient: training filters to `VALID` only.
 
 | Model         | Target                                | Lineup effect (leave-lineup-out)          |
 | ------------- | ------------------------------------- | ----------------------------------------- |
-| Conversion    | `P(make \| shooter, zone, lineup)`    | +0.019% served                            |
-| **Selection** | `P(zone \| shooter, lineup, context)` | **+0.082% served, +0.092% unconstrained** |
+| Conversion    | `P(make \| shooter, zone, lineup)`    | +0.02% served                             |
+| **Selection** | `P(zone \| shooter, lineup, context)` | **+0.08% served, the same unconstrained** |
 
 Measuring conversion and concluding "lineups don't matter" answers the wrong question well.
 The effect lives in shot **selection**.
@@ -337,7 +337,7 @@ coefficient that contradicts it.
 
 ### Pricing the effect, and why in league points rather than the shooter's own
 
-A log-loss improvement is not a decision. "+0.082% on leave-lineup-out" tells you the model
+A log-loss improvement is not a decision. "+0.08% on leave-lineup-out" tells you the model
 learned something; it does not tell you whether a coach should care. So the served scorer
 converts the shot-mix shift into points: the delta in each zone's share, dotted with league
 points per attempt for that zone, scaled to 100 attempts.
@@ -349,7 +349,7 @@ there" — and separating those is the only reason there are two models. Holding
 league rates makes the entire remaining difference selection, which is the estimand.
 
 It also costs nothing. The conversion model measured whether lineup context changes how well
-a player shoots from a fixed spot and found +0.019% against a passing negative control, so as
+a player shoots from a fixed spot and found +0.02% against a passing negative control, so as
 far as this data can tell, **zone value is lineup-independent** and using a lineup-invariant
 price loses no information.
 
@@ -1054,7 +1054,7 @@ Then jump to `FORBIDDEN_FEATURES` in `eval/leakage.py`:
 
 ### Beat 3 (3 min) — the pre-registered sign · open `services/ml/src/lineupiq/models/selection.py`
 
-> "My first model asked whether a shot goes in, and found lineup context worth 0.019%. That
+> "My first model asked whether a shot goes in, and found lineup context worth 0.02%. That
 > is a target mismatch, not a null result. Spacing doesn't make you a better corner shooter —
 > it gets you a corner three instead of a contested pull-up. So I moved the target to _which_
 > shot gets taken."

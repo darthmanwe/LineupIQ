@@ -154,7 +154,7 @@ export default function LineupPage() {
       <h2 style={{ fontSize: "1.3rem", marginTop: "3rem" }}>Score a five-man lineup</h2>
       <p className="lede">
         Not &ldquo;does this lineup make him shoot better&rdquo; — that model was built first and
-        the answer was <strong>+0.019%</strong> log loss on unseen combinations, which is nothing.
+        the answer was <strong>+0.02%</strong> log loss on unseen combinations, which is nothing.
         This is the question that has an answer: does the lineup change{" "}
         <em>which shots he takes</em>. Any five of {PICKABLE.length} players, including combinations
         that have never played a possession together.
