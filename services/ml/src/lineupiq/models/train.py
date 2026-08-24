@@ -56,12 +56,29 @@ TOLERANCE = 1e-6
 #: floating point. What the gate is for is catching a *changed model*, and a
 #: changed model does not move ECE by 1e-4 while leaving log loss at 1e-9.
 BINNED_TOLERANCE = 1e-3
-BINNED_METRICS = frozenset({"ece", "reliability", "resolution", "skill_score"})
+
+#: The binned quantities, named by what they are rather than by where they appear.
+#:
+#: The first version of this was a set of exact metric names, and it was wrong
+#: twice over. The selection model reports the same three estimators once per zone
+#: group -- `three_ece`, `rim_resolution`, `classwise_ece` -- and an exact-match
+#: set silently held all nineteen of those to 1e-6, which failed the gate on
+#: nothing but bin-edge noise. Enumerating names means re-enumerating them every
+#: time a metric appears under a new prefix.
+#:
+#: So the rule comes from the estimator instead: a metric is binned if any
+#: underscore-separated part of its name is one of these. `skill_score` was in the
+#: original list and should not have been -- it is `1 - brier/uncertainty`, a
+#: smooth function of the predictions, and giving it a loose tolerance weakened
+#: the gate for no reason. `log_loss`, `brier`, `uncertainty`,
+#: `calibration_slope` and `top1_accuracy` all keep 1e-6, which is what makes the
+#: gate mean anything: those have no excuse to move.
+BINNED_METRICS = frozenset({"ece", "reliability", "resolution"})
 
 
 def tolerance_for(metric: str) -> float:
     """The drift a metric is allowed. See :data:`BINNED_METRICS`."""
-    return BINNED_TOLERANCE if metric in BINNED_METRICS else TOLERANCE
+    return BINNED_TOLERANCE if set(metric.split("_")) & BINNED_METRICS else TOLERANCE
 
 
 def _git_sha() -> str:
