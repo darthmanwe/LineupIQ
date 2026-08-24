@@ -101,8 +101,11 @@ export const ROUTES: readonly RouteSpec[] = [
     method: "GET",
     path: "/players/:id/zones",
     summary: "Per-zone base rates with sample sizes, no lineup context.",
-    state: "planned",
-    willServe: "Empirical-Bayes shrunk rates, each shipping its own shrinkage weight.",
+    state: "live",
+    willServe:
+      "The raw rate, the empirical-Bayes shrunk rate, and the weight that " +
+      "separates them — because a shrunk rate on eleven attempts is mostly the " +
+      "league prior and looks exactly like a measurement.",
     milestone: M3,
     backedBy: "data/gold/shot_facts/",
   },
@@ -194,10 +197,14 @@ export const ROUTES: readonly RouteSpec[] = [
     method: "GET",
     path: "/eval/groundedness",
     summary: "Numeric traceability, per-check pass rates, both distractor controls.",
-    state: "planned",
-    willServe: "Deterministic groundedness scores over the committed narratives.",
+    state: "live",
+    willServe:
+      "Deterministic groundedness scores over the committed narratives, with " +
+      "both distractor controls beside them — a grounded rate of 1.00 means " +
+      "nothing without them, because a checker that accepts everything scores " +
+      "1.00 too.",
     milestone: M6,
-    backedBy: "services/ml/runs/groundedness/*.json",
+    backedBy: "services/ml/runs/groundedness/run.json",
   },
   {
     method: "GET",

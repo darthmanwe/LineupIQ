@@ -123,6 +123,24 @@ export const loadSelectionModel = (env: Bindings): Promise<SelectionModelData> =
 export const loadSelectionProfiles = (env: Bindings): Promise<SelectionProfiles> =>
   read<SelectionProfiles>(env, "selection_profiles.json");
 
+export type PlayerZoneRow = {
+  zone_id: string;
+  attempts: number;
+  raw_rate: number;
+  shrunk_rate: number;
+  shrinkage_weight: number;
+};
+
+export type PlayerZonesData = {
+  zones: string[];
+  league_zone_rate: Record<string, number>;
+  players: Record<string, PlayerZoneRow[]>;
+  count: number;
+};
+
+export const loadPlayerZones = (env: Bindings): Promise<PlayerZonesData> =>
+  read<PlayerZonesData>(env, "player_zones.json");
+
 /**
  * Published evaluation results, read from the run logs rather than recomputed.
  *

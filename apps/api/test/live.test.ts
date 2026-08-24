@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import coverageJson from "../../web/public/data/coverage.json";
 import evaluationJson from "../../web/public/data/evaluation.json";
+import playerZonesJson from "../../web/public/data/player_zones.json";
 import playersJson from "../../web/public/data/players.json";
 import selectionJson from "../../web/public/data/selection_model.json";
 import selectionProfilesJson from "../../web/public/data/selection_profiles.json";
@@ -27,6 +28,7 @@ import { clearAssetCache } from "../src/data/store";
 const ASSETS: Record<string, unknown> = {
   "support.json": supportJson,
   "players.json": playersJson,
+  "player_zones.json": playerZonesJson,
   "zones.json": zonesJson,
   "snapshot.json": snapshotJson,
   "selection_model.json": selectionJson,
@@ -396,6 +398,101 @@ describe("model and evaluation routes", () => {
     };
     // The finding itself: bare decimals retrieve far worse than vocabulary.
     expect(recall("full")).toBeGreaterThan(recall("numbers"));
+  });
+});
+
+describe("per-player zone rates", () => {
+  it("ships the raw rate, the shrunk rate, and the weight between them", async () => {
+    const [id] = highVolumePlayers(1);
+    const response = await get(`/api/players/${id}/zones`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: {
+        attempts: number;
+        zones: Array<{
+          zone_id: string;
+          attempts: number;
+          raw_rate: number;
+          shrunk_rate: number;
+          shrinkage_weight: number;
+        }>;
+      };
+    };
+    expect(body.data.zones.length).toBeGreaterThan(0);
+    for (const zone of body.data.zones) {
+      // Shrinkage moves a rate toward the prior, so the shrunk value must lie
+      // between the raw one and the league rate — never outside both.
+      expect(zone.shrinkage_weight).toBeGreaterThanOrEqual(0);
+      expect(zone.shrinkage_weight).toBeLessThanOrEqual(1);
+      expect(zone.attempts).toBeGreaterThan(0);
+      expect(zone.raw_rate).toBeGreaterThanOrEqual(0);
+      expect(zone.raw_rate).toBeLessThanOrEqual(1);
+    }
+    // A high-volume shooter's own evidence should dominate almost everywhere.
+    const heavy = body.data.zones.filter((z) => z.shrinkage_weight > 0.9);
+    expect(heavy.length).toBeGreaterThan(0);
+  });
+
+  it("404s a player with no recorded attempts, without claiming he does not exist", async () => {
+    const response = await get("/api/players/999999999/zones");
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { detail: string };
+    expect(body.detail).toMatch(/not the same as/);
+  });
+
+  it("rejects a non-numeric id rather than looking it up", async () => {
+    const response = await get("/api/players/lebron/zones");
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("groundedness", () => {
+  it("never serves a grounded rate without its controls beside it", async () => {
+    const response = await get("/api/eval/groundedness");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: {
+        templates: Array<{
+          template: string;
+          grounded_rate: number;
+          mean_traceability: number;
+          controls: { easy: number; near_miss: number };
+        }>;
+      };
+      meta: { warnings: string[] };
+    };
+    expect(body.data.templates.length).toBeGreaterThan(0);
+    for (const t of body.data.templates) {
+      expect(t.controls.easy).toBeGreaterThanOrEqual(0);
+      expect(t.controls.near_miss).toBeGreaterThanOrEqual(0);
+      // The checker has to be able to tell real evidence from a near miss, or
+      // its pass rate is measuring nothing.
+      if (t.grounded_rate > 0.5) {
+        expect(t.controls.near_miss).toBeLessThan(t.grounded_rate);
+      }
+    }
+  });
+
+  it("warns that perfect traceability is not perfect groundedness", async () => {
+    // The single most important sentence the harness produces. If every
+    // template traces at 1.00 — including the one written to hallucinate — a
+    // reader who sees only that number will draw the wrong conclusion.
+    const response = await get("/api/eval/groundedness");
+    const body = (await response.json()) as { meta: { warnings: string[] } };
+    expect(body.meta.warnings.join(" ")).toMatch(/cannot settle meaning/);
+  });
+
+  it("attributes each failure to the check that caught it", async () => {
+    const response = await get("/api/eval/groundedness");
+    const body = (await response.json()) as {
+      data: { templates: Array<{ template: string; failures_by_check: Record<string, number> }> };
+    };
+    // The hallucinating template must fail, and it must fail somewhere
+    // nameable. A harness that reports a low rate without saying which check
+    // fired is not diagnostic.
+    const hallucinating = body.data.templates.find((t) => t.template === "hallucinating");
+    expect(hallucinating).toBeDefined();
+    expect(Object.keys(hallucinating?.failures_by_check ?? {}).length).toBeGreaterThan(0);
   });
 });
 

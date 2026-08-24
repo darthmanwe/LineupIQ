@@ -311,6 +311,61 @@ def export_players(paths: DataPaths) -> dict[str, Any]:
     return {"players": out, "count": len(out)}
 
 
+def export_player_zones(paths: DataPaths) -> dict[str, Any]:
+    """Per-player, per-zone make rates, each shipping its own shrinkage weight.
+
+    These are the conversion model's profiles, fitted on the full corpus. The
+    weight beside every rate is the share carried by that player's own evidence
+    rather than by the league prior, and it is exported rather than left in a
+    model card because it is the difference between "he shoots 68% at the rim"
+    and "we have eleven attempts and the league shoots 65%".
+
+    Only players with at least one recorded attempt in a zone get a row for it.
+    A shrunk rate exists for every (player, zone) pair the fit saw, but serving a
+    rate for a zone a player has never shot from would be serving the prior
+    while looking like a measurement.
+    """
+    from lineupiq.io.gold import load_all_gold
+    from lineupiq.models.shot_model import fit_profiles
+    from lineupiq.transform.zones import ZONE_IDS
+
+    shots = load_all_gold(paths, "shot_facts")
+    profiles = fit_profiles(shots)
+
+    observed = (
+        shots.group_by(["shooter_id", "zone_id"])
+        .agg(pl.len().alias("attempts"), pl.col("made").sum().alias("makes"))
+        .filter(pl.col("attempts") > 0)
+    )
+
+    players: dict[str, list[dict[str, Any]]] = {}
+    for row in observed.iter_rows(named=True):
+        pid, zone = int(row["shooter_id"]), str(row["zone_id"])
+        attempts, makes = int(row["attempts"]), int(row["makes"])
+        players.setdefault(str(pid), []).append(
+            {
+                "zone_id": zone,
+                "attempts": attempts,
+                # The raw rate alongside the shrunk one, so a reader can see how
+                # far the prior moved it. Publishing only the shrunk value hides
+                # the mechanism doing the most work on small samples.
+                "raw_rate": _round(makes / attempts),
+                "shrunk_rate": _round(profiles.player_zone_rate.get((pid, zone), 0.0)),
+                "shrinkage_weight": _round(profiles.player_zone_weight.get((pid, zone), 0.0)),
+            }
+        )
+
+    for rows in players.values():
+        rows.sort(key=lambda r: ZONE_IDS.index(r["zone_id"]))
+
+    return {
+        "zones": list(ZONE_IDS),
+        "league_zone_rate": {z: _round(r) for z, r in sorted(profiles.zone_rate.items())},
+        "players": players,
+        "count": len(players),
+    }
+
+
 def export_selection_model(paths: DataPaths) -> dict[str, Any]:
     """The served selection model: coefficients plus the per-player mixes.
 
@@ -450,6 +505,11 @@ def export_evaluation(paths: DataPaths) -> dict[str, Any]:
     for name, relative in (
         ("rapm", "rapm/run.json"),
         ("retrieval", "retrieval/ablation.json"),
+        # Groundedness ships the two distractor controls alongside every rate,
+        # because a grounded rate of 1.00 proves nothing on its own -- a checker
+        # that accepts everything also scores 1.00. The near-miss control (same
+        # lineup, one player swapped) is the one that separates them.
+        ("groundedness", "groundedness/run.json"),
     ):
         path = paths.runs / relative
         if path.exists():
@@ -555,6 +615,7 @@ def export_all(paths: DataPaths, directory: Path | None = None) -> ExportManifes
         "snapshot.json": _write(target, "snapshot.json", export_snapshot(paths)),
         "evaluation.json": _write(target, "evaluation.json", export_evaluation(paths)),
         "coverage.json": _write(target, "coverage.json", export_coverage(paths)),
+        "player_zones.json": _write(target, "player_zones.json", export_player_zones(paths)),
         "selection_profiles.json": _write(
             target, "selection_profiles.json", export_selection_profiles(paths)
         ),

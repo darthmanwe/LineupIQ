@@ -13,6 +13,7 @@ import {
   loadEvaluation,
   loadPlayers,
   loadSelectionModel,
+  loadPlayerZones,
   loadSelectionProfiles,
   loadSnapshot,
   loadSupport,
@@ -568,6 +569,170 @@ export function mountLive(app: App): void {
               ]
             : [],
         })
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * One player's per-zone conversion, with the shrinkage weight beside it.
+   *
+   * No lineup context, deliberately — that is what `/lineups/score` is for, and
+   * conflating the two would let a reader attribute a shooter's own tendency to
+   * whoever happened to be on the floor.
+   *
+   * Every rate ships three numbers: the raw one, the shrunk one, and the weight
+   * that separates them. A shrunk rate on its own is indistinguishable from a
+   * measurement, and on eleven attempts it is mostly the league prior. Zones the
+   * player has never shot from are absent rather than filled with the prior.
+   */
+  app.get("/players/:id/zones", async (c) => {
+    const id = c.req.param("id");
+    if (!/^[0-9]+$/.test(id)) {
+      return problem(c, {
+        status: 400,
+        code: "INVALID_PLAYER_ID",
+        title: "Invalid player id",
+        detail: "A player id is a positive integer.",
+      });
+    }
+
+    try {
+      const [zones, players] = await Promise.all([loadPlayerZones(c.env), loadPlayers(c.env)]);
+      const rows = zones.players[id];
+      if (!rows) {
+        return problem(c, {
+          status: 404,
+          code: "NO_SUCH_PLAYER",
+          title: "No recorded attempts for that player",
+          detail:
+            `Player ${id} has no shots in this snapshot. That is not the same as ` +
+            "a player who does not exist, and the API does not claim to know which.",
+        });
+      }
+
+      const total = rows.reduce((a, r) => a + r.attempts, 0);
+      const warnings: string[] = [];
+      const thin = rows.filter((r) => r.shrinkage_weight < 0.5);
+      if (thin.length > 0) {
+        warnings.push(
+          `${thin.length} of ${rows.length} zones carry less than half their weight from ` +
+            `this player's own attempts: ${thin.map((r) => r.zone_id).join(", ")}. Those ` +
+            "rates are mostly the league prior."
+        );
+      }
+
+      return c.json(
+        envelope(
+          c,
+          {
+            player_id: id,
+            name: players.players[id]?.name ?? null,
+            attempts: total,
+            league_zone_rate: zones.league_zone_rate,
+            zones: rows,
+          },
+          { snapshot: c.env.SNAPSHOT ?? null, warnings }
+        )
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * The groundedness harness's results, controls included.
+   *
+   * The controls are not optional context. A grounded rate of 1.00 proves
+   * nothing by itself — a checker that accepts every narrative also scores 1.00
+   * — so the response refuses to serve a rate without the two distractors
+   * beside it: an easy one (score against the next lineup's evidence) and a
+   * near-miss (same lineup, one player swapped, so almost every number is still
+   * nearly right). The near-miss number is the one that means something.
+   *
+   * `mean_traceability` is served with a caveat attached rather than as a
+   * headline. It is 1.00 across every template including the deliberately
+   * hallucinating one, which is the finding: arithmetic settles where a number
+   * came from and cannot settle what it was used to say.
+   */
+  app.get("/eval/groundedness", async (c) => {
+    try {
+      const evaluation = await loadEvaluation(c.env);
+      const groundedness = evaluation.groundedness as
+        | {
+            by_template: Record<
+              string,
+              {
+                grounded_rate: number;
+                mean_traceability: number;
+                control_easy_grounded_rate: number;
+                control_near_miss_grounded_rate: number;
+                failures_by_check: Record<string, number>;
+                checks: string[];
+                n: number;
+              }
+            >;
+            n_documents: number;
+            n_below_floor: number;
+          }
+        | undefined;
+
+      if (!groundedness) {
+        return problem(c, {
+          status: 503,
+          code: "NOT_MEASURED",
+          title: "The groundedness harness has not been run",
+          detail: "No run log at services/ml/runs/groundedness/run.json.",
+        });
+      }
+
+      const templates = Object.entries(groundedness.by_template);
+      const warnings: string[] = [];
+
+      // A control that scores as well as the real thing means the checker is
+      // not checking. Assert it here rather than trusting the run log's author.
+      const blind = templates.filter(
+        ([, t]) => t.control_near_miss_grounded_rate >= t.grounded_rate && t.grounded_rate > 0
+      );
+      if (blind.length > 0) {
+        warnings.push(
+          `The near-miss control scores as high as the real evidence for: ` +
+            `${blind.map(([name]) => name).join(", ")}. Those rates are not evidence ` +
+            `the checker works.`
+        );
+      }
+
+      if (templates.every(([, t]) => t.mean_traceability === 1)) {
+        warnings.push(
+          "Numeric traceability is 1.00 on every template, including the one written to " +
+            "hallucinate. Every number in those narratives is quoted correctly from the " +
+            "evidence and used to say something the evidence does not support. Arithmetic " +
+            "settles provenance; it cannot settle meaning."
+        );
+      }
+
+      return c.json(
+        envelope(
+          c,
+          {
+            n_documents: groundedness.n_documents,
+            n_below_floor: groundedness.n_below_floor,
+            templates: templates.map(([name, t]) => ({
+              template: name,
+              n: t.n,
+              checks: t.checks,
+              grounded_rate: t.grounded_rate,
+              mean_traceability: t.mean_traceability,
+              controls: {
+                easy: t.control_easy_grounded_rate,
+                near_miss: t.control_near_miss_grounded_rate,
+              },
+              failures_by_check: t.failures_by_check,
+            })),
+          },
+          { snapshot: c.env.SNAPSHOT ?? null, warnings }
+        )
       );
     } catch (error) {
       return assetMissing(c, error);
