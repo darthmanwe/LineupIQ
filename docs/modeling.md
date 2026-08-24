@@ -208,3 +208,49 @@ Every correction above is now something CI can catch:
 | `possession_oracle_agreement`             | ≥ 93%     | attribution drifting off the change of hands |
 | `possession_oracle_agreement_unambiguous` | ≥ 96%     | the same, away from substitution boundaries  |
 | `shot_possession_context_coverage`        | ≥ 99%     | shots silently dropped by a boundary mismatch |
+
+---
+
+## Running the reproducibility gate for the first time
+
+`train --verify` refits the conversion model from committed gold and asserts every metric
+reproduces to 1e-6. That claim was in the README before anything had executed it, and
+executing it crashed. Four rounds of diagnosis; the first three were wrong.
+
+Rounds one to three found real inefficiencies, all kept:
+
+- Every fold was materialised up front, so four copies of the corpus were resident at once.
+  The generator is now iterated lazily.
+- `build_features` read the lineup columns with `.to_list()` — 600k Python lists of five ints
+  per column per fold, roughly 120 MB of small objects whose churn the allocator never gave
+  back. `util.lineup_slots` reads five flat integer arrays through polars' `list.get`
+  instead, and zone strings go through categorical codes.
+- The shuffled-lineup control round-tripped two columns through Python before a `gather`
+  that works directly on the Series.
+
+**None of them was the cause.** Each fix relocated the fault. What settled it was noticing
+that the faults kept landing on lines that cannot fault — a bare `for i in range(n):`, a
+dict lookup, and finally `_logit` reporting
+`TypeError: unsupported operand type(s) for /: 'type' and 'float'` for a dictionary whose
+every value is built by a literal `float(...)` call. No execution of that source puts a type
+object there.
+
+Reproducing the workload with the project taken out of it — numpy arrays, Python dicts, a
+plain loop, no polars, no scikit-learn, no memory cap — produced an access violation on one
+run and `IndexError: invalid index to scalar variable` on a 700,000-element array on the
+next. The machine's own logs then showed a kernel-mode bugcheck (`0x1E`, `0xC0000005`), four
+more minidumps predating this repository by a month, and a WHEA corrected machine-check
+reported by Processor Core on an i9-13900KF with non-ECC memory.
+
+So the crash is a hardware fault that sustained memory pressure exposes, and nothing in this
+repository can fix it. **The reproducibility claim is therefore verified in CI, on Linux
+runners — `repro.yml`, not this workstation.**
+
+The per-row arithmetic was left untouched through all of it, deliberately: same operations,
+same order, same values, so the committed metrics still mean what they meant and `--verify`
+remains a test of reproducibility rather than of whichever refactor came last.
+
+One genuine consequence for the memory cap: a fixed 6 GB default was wrong in both
+directions — generous on a laptop, and tight enough on a 64 GB workstation to block a
+legitimate refit and read as a reproducibility failure. It now derives from physical RAM, a
+quarter of it, clamped to 4–24 GB.

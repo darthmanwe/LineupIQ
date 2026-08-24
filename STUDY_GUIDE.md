@@ -673,6 +673,70 @@ override. Verified by a subprocess test, not assumed.
    **as-of join** (linear merge on elapsed time) took peak to 1,685 MB with identical
    coverage. _An estimate that models only the part you wrote is worse than no estimate._
 
+**Then the reproducibility gate, run for the first time, and the most instructive debugging
+episode in the project.** `train --verify` had never actually been executed. Executing it
+crashed. Fixing that crashed it again. Four rounds, and only the fourth diagnosis was right.
+
+Three real inefficiencies came out of rounds one to three, and they are worth keeping on
+their own merits:
+
+1. `list(walk_forward_by_game(usable))` materialised every fold up front, and each fold holds
+   its own copy of the train and test frames — four copies of the corpus resident at once.
+   Iterating the generator lazily holds one.
+2. `build_features` read whole list columns via `.to_list()`: 600k Python lists of five ints
+   per column, per fold, roughly 120 MB of small objects whose churn the allocator never
+   gave back. `util.lineup_slots` reads the column as five flat integer arrays via polars'
+   `list.get` instead, and zones go through categorical codes rather than 600k Python
+   strings drawn from a nine-value vocabulary.
+3. The negative control round-tripped both lineup columns through `.to_list()` before
+   gathering, for an identical result. `gather` works directly on the polars Series.
+
+**And none of them was the cause.** Each fix moved the crash somewhere else. The tell was
+that the faults kept landing on lines that cannot fault: a bare `for i in range(n):`, a
+dict `.get`, and — the one that gave it away — `_logit` raising
+`TypeError: unsupported operand type(s) for /: 'type' and 'float'`. Every value in that dict
+is constructed by a literal `float(...)` call. **There is no execution of that code which
+puts a type object there.** When the observed behaviour is not reachable from the source, the
+source is not what is wrong.
+
+So I stopped patching and started measuring. The discriminating experiment was to reproduce
+the workload with the project removed from it — plain numpy arrays, plain Python dicts, a
+plain loop, no polars, no scikit-learn, no memory cap:
+
+| Run | Outcome                                                                                   |
+| --- | ----------------------------------------------------------------------------------------- |
+| 1   | access violation on round 11 of 14, inside `for i in range(N):`                           |
+| 2   | `IndexError: invalid index to scalar variable` — a 700,000-element array read as a scalar |
+
+Two runs, two different impossible failures, ~90 lines of code depending on nothing but
+CPython and numpy. That is not a library bug. Then the machine's own records:
+
+| Evidence                                                     | Reading                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bugcheck `0x1E (0xC0000005, …)` on 24 Aug                    | Kernel-mode access violation. **A user-space process cannot cause this.**                                                                                                                                          |
+| Four further minidumps dated 15 Jul                          | The machine was bugchecking a month before this project had a line of code.                                                                                                                                        |
+| WHEA: "corrected hardware error … component: Processor Core" | A machine-check the CPU caught and corrected.                                                                                                                                                                      |
+| i9-13900KF, non-ECC DDR5                                     | Raptor Lake, the generation with the documented voltage-degradation defect. Microcode is 0x12F, so the mitigation is applied — but microcode stops further degradation, it does not reverse what already happened. |
+
+The correct conclusion is that this workstation has a hardware fault, that sustained memory
+pressure is the load that exposes it, and that **no change to this repository can fix it.**
+The memory work above is still worth having — it cut peak resident memory substantially and
+removed real waste — but presenting it as the fix would have been wrong, and I had already
+written that wrong explanation into this document before the stress test contradicted it.
+
+Two lessons, and the second is the one I would actually want to be asked about:
+
+- **A gate you have never run is not a gate.** The reproducibility claim was in the README
+  before anything had checked it.
+- **A fix that moves a bug has not explained it.** Three plausible mechanisms, three real
+  improvements, three wrong diagnoses — because each one was consistent with the symptom and
+  I never asked what else would have to be true. The cheap experiment that settled it
+  (delete the suspect from the picture and see if the symptom survives) was available on day
+  one and I reached for it fourth.
+
+The practical consequence: **`train --verify` is trusted from CI, on Linux runners, not from
+this machine.** `repro.yml` is where the claim lives.
+
 Also added: progress output and **partial run-log checkpoints after each CV split**, so a
 20-minute job interrupted at minute 18 keeps its finished folds. That earned its place
 immediately — the very next run was killed and the walk-forward results survived.
@@ -683,26 +747,29 @@ immediately — the very next run was killed and the walk-forward results surviv
 
 Keep this list. It is the most credible part of the story.
 
-| Bug                                                   | How it was caught                         | Why it mattered                                        |
-| ----------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------ |
-| Possession windows were event spans, not durations    | Median duration of 2s is not a possession | 45% zero-length; published split was on a non-duration |
-| Oracle disagreement blamed on convention              | Fixing the start moved 89.95% → 95.08%    | Half the disagreement was my bug                       |
-| `OffMadeShot` treated as live-ball                    | Median length 17s, same as a timeout      | Wrong transition classification                        |
-| Duration used as a feature                            | 93.3% vs 1.3% conversion split            | Outcome leakage into a selection model                 |
-| Offence attribution defaulted to "away"               | Reading the fall-through branch           | Mis-attributed, _and_ made facts depend on the oracle  |
-| `content_hash` segfaulted                             | `0xC0000005` on 1.5M nested-list rows     | Iterating as Python objects exhausted memory           |
-| RAPM leaderboard printed zero possessions             | Reading the output                        | Hid a +5.5 built on 8,098 possessions                  |
-| `nan` silently became `0.0`                           | Variance decomposition read "0%"          | Reported a decomposition never computed                |
-| Placebo sign agreement read 0.0%                      | `sign(0)` matches neither ±1              | A meaningless statistic on the arm that matters        |
-| Exported JSON contained bare `NaN`                    | Worker test could not parse its fixture   | **Invalid JSON — a 500 in production**                 |
-| Name extractor could not parse hyphenated names       | 36 false positives on faithful narratives | A checker flagging correct prose buries real failures  |
-| Groundedness flagged "per 100" as ungrounded          | Writing the test                          | Would fail every correct narrative                     |
-| Parity fixture had zero `reportable` cases            | The generator's own warning               | A branch never exercised cannot be proved to agree     |
-| First ablation conflated model class with lineup info | Reading the ladder                        | Reported a model-class effect as a lineup effect       |
-| Court heatmap had 2,245 grid points of gap            | The geometry agreement test               | Upper corners belonged to no zone                      |
-| Wing-three label sat in top-of-the-key                | The label-anchor test                     | A chart mislabelling its own regions                   |
-| `points_per_attempt` averaged the shot's face value   | Every zone came out 2.000 or 3.000        | A "surface" that was just the arc redrawn              |
-| UTF-8 double-encoding in three files                  | `Ã‚Â±8` in the rendered README            | My own PowerShell patching through a legacy code page  |
+| Bug                                                        | How it was caught                               | Why it mattered                                          |
+| ---------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| Possession windows were event spans, not durations         | Median duration of 2s is not a possession       | 45% zero-length; published split was on a non-duration   |
+| Oracle disagreement blamed on convention                   | Fixing the start moved 89.95% → 95.08%          | Half the disagreement was my bug                         |
+| `OffMadeShot` treated as live-ball                         | Median length 17s, same as a timeout            | Wrong transition classification                          |
+| Duration used as a feature                                 | 93.3% vs 1.3% conversion split                  | Outcome leakage into a selection model                   |
+| Offence attribution defaulted to "away"                    | Reading the fall-through branch                 | Mis-attributed, _and_ made facts depend on the oracle    |
+| `content_hash` segfaulted                                  | `0xC0000005` on 1.5M nested-list rows           | Iterating as Python objects exhausted memory             |
+| RAPM leaderboard printed zero possessions                  | Reading the output                              | Hid a +5.5 built on 8,098 possessions                    |
+| `nan` silently became `0.0`                                | Variance decomposition read "0%"                | Reported a decomposition never computed                  |
+| Placebo sign agreement read 0.0%                           | `sign(0)` matches neither ±1                    | A meaningless statistic on the arm that matters          |
+| Three wrong diagnoses of one crash                         | Each fix moved the fault instead of removing it | **The machine, not the code** — see the hardware section |
+| `build_features` materialised whole list columns           | Peak climbed 1,097 → 2,604 MB across folds      | Allocator fragmentation; memory never returned           |
+| The negative control round-tripped a column through Python | Same run, after every fold had passed           | ~1 GB of small objects for an identical result           |
+| Exported JSON contained bare `NaN`                         | Worker test could not parse its fixture         | **Invalid JSON — a 500 in production**                   |
+| Name extractor could not parse hyphenated names            | 36 false positives on faithful narratives       | A checker flagging correct prose buries real failures    |
+| Groundedness flagged "per 100" as ungrounded               | Writing the test                                | Would fail every correct narrative                       |
+| Parity fixture had zero `reportable` cases                 | The generator's own warning                     | A branch never exercised cannot be proved to agree       |
+| First ablation conflated model class with lineup info      | Reading the ladder                              | Reported a model-class effect as a lineup effect         |
+| Court heatmap had 2,245 grid points of gap                 | The geometry agreement test                     | Upper corners belonged to no zone                        |
+| Wing-three label sat in top-of-the-key                     | The label-anchor test                           | A chart mislabelling its own regions                     |
+| `points_per_attempt` averaged the shot's face value        | Every zone came out 2.000 or 3.000              | A "surface" that was just the arc redrawn                |
+| UTF-8 double-encoding in three files                       | `Ã‚Â±8` in the rendered README                  | My own PowerShell patching through a legacy code page    |
 
 The last one is why I stopped using shell string-patching on non-ASCII files, and why the
 report renderer is pure ASCII.

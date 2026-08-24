@@ -35,7 +35,7 @@ import polars as pl
 from lineupiq.eval.leakage import assert_no_forbidden_features
 from lineupiq.models.priors import fit_dirichlet_prior
 from lineupiq.transform.zones import ZONE_IDS
-from lineupiq.util import as_float
+from lineupiq.util import ABSENT_PLAYER, as_float, lineup_slots
 
 __all__ = [
     "DESIGN_COLUMNS",
@@ -531,8 +531,10 @@ def build_selection_design(frame: pl.DataFrame, profiles: SelectionProfiles) -> 
         team_mix[i] = np.log(np.maximum(trow, _EPS)) - log_league if trow is not None else zero
 
     # --- lineup aggregates ------------------------------------------------
-    for_lineups = frame["lineup_for"].to_list()
-    against_lineups = frame["lineup_against"].to_list()
+    # Five flat arrays per column rather than 600k Python lists. See
+    # `util.lineup_slots` for why.
+    for_slots = lineup_slots(frame["lineup_for"])
+    against_slots = lineup_slots(frame["lineup_against"])
     spacing = np.zeros(n)
     spacing_min = np.zeros(n)
     teammate_rim = np.zeros(n)
@@ -541,7 +543,11 @@ def build_selection_design(frame: pl.DataFrame, profiles: SelectionProfiles) -> 
 
     for i in range(n):
         shooter = int(shooters[i])
-        teammates = [int(p) for p in (for_lineups[i] or []) if int(p) != shooter]
+        teammates = [
+            player
+            for player in (int(slot[i]) for slot in for_slots)
+            if player != ABSENT_PLAYER and player != shooter
+        ]
         if teammates:
             rates = [
                 profiles.player_three_rate.get(t, profiles.league_three_rate) for t in teammates
@@ -550,7 +556,9 @@ def build_selection_design(frame: pl.DataFrame, profiles: SelectionProfiles) -> 
             spacing[i] = float(np.mean(rates)) - profiles.league_three_rate
             spacing_min[i] = min(rates) - profiles.league_three_rate
             teammate_rim[i] = float(np.mean(rims)) - profiles.league_rim_rate
-        defenders = [int(p) for p in (against_lineups[i] or [])]
+        defenders = [
+            player for player in (int(slot[i]) for slot in against_slots) if player != ABSENT_PLAYER
+        ]
         if defenders:
             opp_rim[i] = (
                 float(

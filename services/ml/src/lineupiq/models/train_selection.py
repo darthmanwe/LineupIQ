@@ -148,8 +148,11 @@ def _permute_lineups(shots: pl.DataFrame, *, seed: int) -> pl.DataFrame:
     rng = np.random.default_rng(seed)
     order = rng.permutation(shots.height)
     return shots.with_columns(
-        pl.Series("lineup_for", shots["lineup_for"].to_list()).gather(order),
-        pl.Series("lineup_against", shots["lineup_against"].to_list()).gather(order),
+        # `gather` straight on the existing Series; see the note in `train.py`.
+        # Going through `.to_list()` materialises the whole column as Python
+        # objects, twice, for no gain -- the values and their order are identical.
+        shots["lineup_for"].gather(order).alias("lineup_for"),
+        shots["lineup_against"].gather(order).alias("lineup_against"),
     )
 
 
@@ -164,9 +167,9 @@ def shuffled_lineup_control(shots: pl.DataFrame, *, seed: int = SEED) -> dict[st
     lineups at all, and no aggregate would have said so.
     """
     shuffled = _permute_lineups(shots, seed=seed)
-    folds = list(walk_forward_by_game(shuffled, n_folds=2))
-    if not folds:
-        return {}
+    # Two folds only, and still lazily: the control refits the whole ladder,
+    # so holding both folds' frames at once doubles the footprint for nothing.
+    folds = walk_forward_by_game(shuffled, n_folds=2)
 
     gains: list[float] = []
     spacings: list[float] = []
@@ -183,6 +186,9 @@ def shuffled_lineup_control(shots: pl.DataFrame, *, seed: int = SEED) -> dict[st
         gains.append(blind_loss - full_loss)
         spacings.append(full.coefficient("spacing_x_three"))
 
+    # No folds means too few games to split, not "the control passed".
+    if not gains:
+        return {}
     return {
         "shuffled_lineup_logloss_gain": float(np.mean(gains)),
         "shuffled_lineup_spacing_coefficient": float(np.mean(spacings)),
@@ -279,9 +285,11 @@ def train_and_evaluate_selection(
         n_lineups=usable["lineup_for_hash"].n_unique(),
     )
 
+    # Generators, not lists: see the note in `train.py`. Materialising every
+    # fold up front holds one copy of the corpus per fold, simultaneously.
     for split_name, folds in (
-        ("walk_forward", list(walk_forward_by_game(usable))),
-        ("leave_lineup_out", list(leave_lineup_out(usable))),
+        ("walk_forward", walk_forward_by_game(usable)),
+        ("leave_lineup_out", leave_lineup_out(usable)),
     ):
         per_fold = []
         for fold in folds:

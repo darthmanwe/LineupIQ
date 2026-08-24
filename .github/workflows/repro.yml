@@ -1,0 +1,69 @@
+name: Reproducibility
+
+# Separate from CI on purpose.
+#
+# Both models refit from scratch here: the conversion model over nine folds and
+# the selection model over nine folds plus two negative controls and a
+# within-shooter robustness refit. That is tens of minutes of compute, which is
+# the wrong thing to put on every push -- a slow required check is a check people
+# learn to ignore.
+#
+# So it runs nightly and on demand. What it asserts is the claim the whole
+# repository rests on: that a clean clone refits the committed run logs to
+# within 1e-6, with no network, no key and no account.
+on:
+  schedule:
+    # 04:00 UTC, after nothing and before anyone.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+env:
+  ANTHROPIC_API_KEY: ""
+  LINEUPIQ_LLM_MAX_CALLS: "0"
+
+concurrency:
+  group: repro-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    # Generous: the selection model's nine folds are the long pole, and a
+    # timeout that trips on a slow runner reads as a reproducibility failure
+    # when it is nothing of the kind.
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+
+      # The memory cap is on by default and refuses to run if it cannot be
+      # applied. On a POSIX runner that is RLIMIT_AS, which works; the flag is
+      # passed explicitly so a future runner change surfaces here rather than
+      # in a confusing MemoryError halfway through fold seven.
+      - name: Conversion model refits to the committed metrics
+        run: uv run lineupiq train --verify --memory-cap-gb 12
+
+      - name: Selection model refits to the committed metrics
+        run: uv run lineupiq selection --verify --memory-cap-gb 12
+
+      # RAPM and the trade backtest have no --verify yet; their run logs are
+      # regenerated and diffed instead, which catches the same drift.
+      - name: RAPM and the trade backtest are unchanged
+        run: |
+          uv run lineupiq rapm --memory-cap-gb 12
+          uv run lineupiq backtest --rule inherit --memory-cap-gb 12
+      - name: Assert nothing moved
+        working-directory: .
+        run: |
+          git diff --stat -- services/ml/runs/ data/gold/
+          git diff --exit-code -- services/ml/runs/rapm/run.json \
+            || (echo "::error::RAPM moved. Re-render the README and commit." && exit 1)

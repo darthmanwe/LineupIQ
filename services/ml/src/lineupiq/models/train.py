@@ -157,15 +157,19 @@ def _shuffled_lineup_control(shots: pl.DataFrame, *, seed: int = SEED) -> float:
     perm = rng.permutation(n)
 
     shuffled = shots.with_columns(
-        pl.Series("lineup_for", shots["lineup_for"].to_list()).gather(perm),
-        pl.Series("lineup_against", shots["lineup_against"].to_list()).gather(perm),
+        # `gather` straight on the existing Series. Round-tripping through
+        # `.to_list()` first materialises 670k Python lists twice over, which is
+        # about a gigabyte of small objects and was enough on its own to kill a
+        # capped run after every fold had already succeeded.
+        shots["lineup_for"].gather(perm).alias("lineup_for"),
+        shots["lineup_against"].gather(perm).alias("lineup_against"),
     )
 
-    folds = list(walk_forward_by_game(shuffled, n_folds=2))
-    if not folds:
-        return 0.0
+    # Two folds only, and still lazily: the control refits the whole ladder,
+    # so holding both folds' frames at once doubles the footprint for nothing.
+    folds = walk_forward_by_game(shuffled, n_folds=2)
 
-    gains = []
+    gains: list[float] = []
     for fold in folds:
         profiles = fit_profiles(fold.train)
         y = fold.test["made"].to_numpy().astype(float)
@@ -176,7 +180,9 @@ def _shuffled_lineup_control(shots: pl.DataFrame, *, seed: int = SEED) -> float:
         from lineupiq.eval.metrics import log_loss
 
         gains.append(log_loss(y, b1) - log_loss(y, full))
-    return float(np.mean(gains))
+
+    # No folds means too few games to split, not "the control passed".
+    return float(np.mean(gains)) if gains else 0.0
 
 
 def train_and_evaluate(shots: pl.DataFrame, *, run_controls: bool = True) -> RunLog:
@@ -202,9 +208,16 @@ def train_and_evaluate(shots: pl.DataFrame, *, run_controls: bool = True) -> Run
         n_lineups=usable["lineup_for_hash"].n_unique(),
     )
 
+    # The splitters are generators, and they stay generators.
+    #
+    # `list(walk_forward_by_game(usable))` materialises every fold at once, and
+    # each fold holds its own copy of the train and test frames -- four folds is
+    # four times the corpus resident simultaneously, with list columns. That
+    # alone segfaulted a capped run before the first fold was scored, while
+    # iterating lazily peaks at 2.4 GB across all nine.
     for split_name, folds in (
-        ("walk_forward", list(walk_forward_by_game(usable))),
-        ("leave_lineup_out", list(leave_lineup_out(usable))),
+        ("walk_forward", walk_forward_by_game(usable)),
+        ("leave_lineup_out", leave_lineup_out(usable)),
     ):
         per_fold = [_evaluate_fold(fold) for fold in folds]
         if per_fold:

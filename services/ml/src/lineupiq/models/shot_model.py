@@ -27,12 +27,19 @@ from lineupiq.config import SEED
 from lineupiq.eval.leakage import assert_no_forbidden_features
 from lineupiq.models.priors import fit_beta_prior
 from lineupiq.transform.zones import ZONE_IDS
-from lineupiq.util import as_float
+from lineupiq.util import ABSENT_PLAYER, as_float, lineup_slots
 
 __all__ = ["FEATURE_NAMES", "Profiles", "ShotModel", "build_features", "fit_profiles"]
 
 #: Rim zones, for the opponent interior-defence profile.
 _RIM_ZONES = ("restricted_area", "paint_non_ra")
+
+
+#: Rows per chunk when reading list columns into Python objects.
+#:
+#: Bounds how many small objects are alive at once. 50k rows of five-element
+#: lists is roughly 10 MB rather than the 120 MB a whole column costs, and the
+#: allocator gets the memory back between chunks.
 
 #: Order matters and is part of the serving contract: the TypeScript scorer
 #: consumes coefficients positionally.
@@ -170,11 +177,6 @@ def build_features(frame: pl.DataFrame, profiles: Profiles) -> tuple[np.ndarray,
     """
     assert_no_forbidden_features([c for c in frame.columns if c in {"is_assisted"}])
 
-    shooters = frame["shooter_id"].to_list()
-    zones = frame["zone_id"].to_list()
-    for_lineups = frame["lineup_for"].to_list()
-    against_lineups = frame["lineup_against"].to_list()
-
     n = frame.height
     base_logit = np.empty(n)
     base_weight = np.empty(n)
@@ -183,19 +185,57 @@ def build_features(frame: pl.DataFrame, profiles: Profiles) -> tuple[np.ndarray,
     opp_rim = np.empty(n)
     opp_zone = np.empty(n)
 
+    # Read the lineup columns without ever materialising a Python list.
+    #
+    # `frame["lineup_for"].to_list()` allocates 600k Python lists of five ints
+    # per column, per fold -- roughly 120 MB of small objects whose churn the
+    # allocator does not give back. `lineup_slots` reads five flat integer
+    # arrays through polars instead, and zones go through categorical codes
+    # rather than 600k Python strings drawn from a nine-value vocabulary.
+    #
+    # **The per-row arithmetic below is untouched.** Same values in the same
+    # order, so the same floating-point summation sequence -- the fitted metrics
+    # are what the committed run log holds and `train --verify` still means
+    # something. Only the lifetime of the Python objects changes.
+    source = frame.select(
+        "shooter_id",
+        "zone_id",
+        "lineup_for",
+        "lineup_against",
+        "shot_distance_ft",
+        "is_three",
+        "period",
+        "seconds_remaining",
+        "made",
+    )
+
+    shooters = source["shooter_id"].to_numpy()
+    zone_column = source["zone_id"].cast(pl.Categorical)
+    zone_names = zone_column.cat.get_categories().to_list()
+    zone_codes = zone_column.to_physical().to_numpy()
+
+    for_slots = lineup_slots(source["lineup_for"])
+    against_slots = lineup_slots(source["lineup_against"])
+
     for i in range(n):
-        pid, zone = int(shooters[i]), zones[i]
+        pid, zone = int(shooters[i]), zone_names[zone_codes[i]]
         base_logit[i] = profiles.base_logit(pid, zone)
         base_weight[i] = profiles.player_zone_weight.get((pid, zone), 0.0)
 
-        teammates = [int(p) for p in (for_lineups[i] or []) if int(p) != pid]
+        teammates = [
+            player
+            for player in (int(slot[i]) for slot in for_slots)
+            if player != ABSENT_PLAYER and player != pid
+        ]
         rates = [profiles.player_three_rate.get(t, profiles.league_three_rate) for t in teammates]
         spacing_sum[i] = sum(rates) - len(rates) * profiles.league_three_rate if rates else 0.0
         # The worst spacer on the floor. One non-shooter collapses spacing in a
         # way a sum cannot express, because a good spacer offsets him in the sum.
         spacing_min[i] = (min(rates) - profiles.league_three_rate) if rates else 0.0
 
-        defenders = [int(p) for p in (against_lineups[i] or [])]
+        defenders = [
+            player for player in (int(slot[i]) for slot in against_slots) if player != ABSENT_PLAYER
+        ]
         rim_vals = [
             profiles.player_rim_defence.get(d, profiles.league_rim_allowed) for d in defenders
         ]
@@ -207,11 +247,11 @@ def build_features(frame: pl.DataFrame, profiles: Profiles) -> tuple[np.ndarray,
         )
         opp_zone[i] = sum(fg_vals) / len(fg_vals) - profiles.league_fg_allowed if fg_vals else 0.0
 
-    distance = frame["shot_distance_ft"].to_numpy().astype(float)
+    distance = source["shot_distance_ft"].to_numpy().astype(float)
     distance_z = (distance - profiles.distance_mean) / profiles.distance_std
-    is_three = frame["is_three"].to_numpy().astype(float)
-    period = frame["period"].to_numpy().astype(float)
-    secs = frame["seconds_remaining"].to_numpy().astype(float)
+    is_three = source["is_three"].to_numpy().astype(float)
+    period = source["period"].to_numpy().astype(float)
+    secs = source["seconds_remaining"].to_numpy().astype(float)
 
     is_clutch = ((period >= 4) & (secs <= 300)).astype(float)
     late_clock = (secs <= 24).astype(float)
@@ -230,7 +270,7 @@ def build_features(frame: pl.DataFrame, profiles: Profiles) -> tuple[np.ndarray,
             late_clock,
         ]
     )
-    y = frame["made"].to_numpy().astype(float)
+    y = source["made"].to_numpy().astype(float)
     return X, y
 
 

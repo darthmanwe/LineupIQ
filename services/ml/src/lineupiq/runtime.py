@@ -39,11 +39,67 @@ __all__ = [
     "peak_process_memory_bytes",
 ]
 
-#: Default ceiling. Comfortably above what a three-season fit needs (measured
-#: peak is around 170 MB of Python allocation, and roughly 600 MB resident
-#: including polars frames and sklearn's binned copies), and comfortably below
-#: anything that would put a desktop into swap.
-DEFAULT_MEMORY_CAP_GB = 6.0
+#: Share of physical memory the default cap allows.
+#:
+#: A fixed number is wrong in both directions: 6 GB is generous on a laptop and
+#: absurdly tight on a 64 GB workstation, where it blocked a legitimate refit
+#: and read as a reproducibility failure. A quarter of RAM leaves the machine
+#: usable while still catching the runaway growth this module exists for.
+_DEFAULT_CAP_SHARE = 0.25
+
+#: Bounds on the derived default, in GB. The floor keeps a small machine from
+#: setting a cap so low that nothing runs; the ceiling keeps a large one from
+#: setting a cap so high it stops being a limit.
+_MIN_CAP_GB, _MAX_CAP_GB = 4.0, 24.0
+
+
+def _physical_memory_gb() -> float | None:
+    """Total installed RAM, or ``None`` when it cannot be determined."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", wintypes.DWORD),
+                ("dwMemoryLoad", wintypes.DWORD),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.dwLength = ctypes.sizeof(MemoryStatus)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return None
+        return float(status.ullTotalPhys) / 1e9
+
+    pages = os.sysconf("SC_PHYS_PAGES") if hasattr(os, "sysconf") else None
+    size = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else None
+    if not pages or not size:
+        return None
+    return float(pages * size) / 1e9
+
+
+def default_memory_cap_gb() -> float:
+    """A cap proportional to the machine, clamped to sane bounds.
+
+    Derived rather than fixed because a fixed number is wrong in both
+    directions. This is called at import to populate
+    :data:`DEFAULT_MEMORY_CAP_GB`, and re-callable for tests.
+    """
+    total = _physical_memory_gb()
+    if total is None:
+        return _MIN_CAP_GB * 2
+    return max(_MIN_CAP_GB, min(_MAX_CAP_GB, round(total * _DEFAULT_CAP_SHARE, 1)))
+
+
+DEFAULT_MEMORY_CAP_GB = default_memory_cap_gb()
 
 #: Thread-pool environment variables, and the reason they are bounded.
 #:

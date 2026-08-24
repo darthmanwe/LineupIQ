@@ -38,7 +38,7 @@ import numpy as np
 import polars as pl
 
 from lineupiq.hashing import LINEUP_SIZE
-from lineupiq.util import as_float
+from lineupiq.util import as_float, lineup_slots
 
 __all__ = [
     "LAMBDA_GRID",
@@ -146,12 +146,14 @@ def build_rapm_design(possessions: pl.DataFrame) -> RapmDesign:
     """
     from scipy import sparse
 
-    off = possessions["off_lineup"].to_list()
-    dfn = possessions["def_lineup"].to_list()
+    # Five flat arrays per column rather than 500k Python lists. The caller
+    # has already filtered to lineups of exactly five, so no slot is absent.
+    off = lineup_slots(possessions["off_lineup"])
+    dfn = lineup_slots(possessions["def_lineup"])
     points = possessions["points"].to_numpy().astype(float)
     games = possessions["game_id"].to_numpy()
 
-    everyone = sorted({int(p) for lineup in off + dfn for p in lineup})
+    everyone = sorted({int(p) for slot in off + dfn for p in slot})
     index = {player: i for i, player in enumerate(everyone)}
     n_players = len(everyone)
 
@@ -168,12 +170,12 @@ def build_rapm_design(possessions: pl.DataFrame) -> RapmDesign:
     appearances: dict[int, int] = dict.fromkeys(everyone, 0)
     cursor = 0
     for i in range(n):
-        for player in off[i]:
+        for player in (slot[i] for slot in off):
             rows[cursor] = i
             cols[cursor] = index[int(player)]
             appearances[int(player)] += 1
             cursor += 1
-        for player in dfn[i]:
+        for player in (slot[i] for slot in dfn):
             rows[cursor] = i
             cols[cursor] = n_players + index[int(player)]
             appearances[int(player)] += 1
