@@ -4,11 +4,13 @@
 each should take, with the possession count behind every number and an explicit refusal
 when there isn't one.**
 
+### ▶ [**Try it — lineupiq-api-production.kutlumizrak.workers.dev**](https://lineupiq-api-production.kutlumizrak.workers.dev)
+
 [![CI](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml/badge.svg)](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml)
 [![Reproducibility](https://github.com/darthmanwe/LineupIQ/actions/workflows/repro.yml/badge.svg)](https://github.com/darthmanwe/LineupIQ/actions/workflows/repro.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Denver's championship five, scored](docs/media/01-lineup-scored.png)
+[![Denver's championship five, scored](docs/media/01-lineup-scored.png)](https://lineupiq-api-production.kutlumizrak.workers.dev/lineup/)
 
 Three seasons of NBA play-by-play, reconstructed into who was on the floor for every one of
 698,314 shots, then modelled two ways: *does he make it* and *which shot does he take*.
@@ -870,11 +872,12 @@ including an arithmetic mistake in its headline formula and a contradiction abou
 | Live LLM narratives | The evaluation harness runs today against templated text. A language model has never been called by this repository, and the cache and judge-agreement labels are outstanding. |
 | Era weighting | Over three seasons the column would be constant. Shipping a weighting scheme driven by a constant column is the same category of overclaim as fabricating data. |
 
-**Deploying it** takes one command, and it is the one step that could not be automated here
-because `wrangler login` is an interactive browser OAuth flow:
+**It is deployed**, at
+[lineupiq-api-production.kutlumizrak.workers.dev](https://lineupiq-api-production.kutlumizrak.workers.dev).
+One Worker serves both the API and the static site; assets are unmetered and never invoke the
+Worker, so only `/api/*` counts against the request budget. Redeploying is:
 
 ```bash
-npx wrangler login
 npm --workspace apps/web run build
 npx wrangler deploy --env production --config apps/api/wrangler.toml
 ```

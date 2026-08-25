@@ -183,8 +183,27 @@ async function main() {
       // capture is taken at that ratio so the link preview is composed rather
       // than cropped by chance.
       if (shot.social) {
-        const card = await context.newPage();
-        await card.setViewportSize({ width: 1280, height: 640 });
+        // Its own context at 1x. GitHub's social preview wants **exactly**
+        // 1280x640; the 2x device scale the other captures use produced a
+        // 2560x1280 file that GitHub accepted and then rendered blank. The
+        // layout is identical either way — only the pixel density differs — so
+        // there is nothing to lose by matching the spec exactly.
+        // Its own context at 1x. GitHub's social preview wants **exactly**
+        // 1280x640; the 2x device scale the other captures use produced a
+        // 2560x1280 file that GitHub accepted and then rendered blank.
+        //
+        // The desktop layout is kept deliberately. Dropping to a mobile width
+        // makes the court bigger and the card worse: it crops mid-court, loses
+        // the headline number entirely, and the wider viewport is what puts the
+        // court and "+0.06 points per 100 attempts" in the same frame. Five
+        // recognisable names beside a shot chart is the thing that says what
+        // this is at thumbnail size.
+        const cardContext = await browser.newContext({
+          viewport: { width: 1280, height: 640 },
+          deviceScaleFactor: 1,
+          colorScheme: "light",
+        });
+        const card = await cardContext.newPage();
         await shot.run(card);
         // Re-aimed for the card. At 640px the `.scorer` alignment shows five
         // dropdowns and the top of a court, which is a screenshot of a form.
@@ -196,8 +215,8 @@ async function main() {
         // court, its legend and the headline together.
         await alignTop(card, ".scorer .priced", 430);
         await card.screenshot({ path: path.join(OUT, "social-card.png") });
-        await card.close();
-        console.log("  social-card.png  1280x640, for the GitHub link preview");
+        await cardContext.close();
+        console.log("  social-card.png  1280x640 at 1x, for the GitHub link preview");
       }
     } catch (error) {
       // Collected rather than thrown, so one broken capture does not hide the
