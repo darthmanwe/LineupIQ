@@ -842,22 +842,13 @@ including an arithmetic mistake in its headline formula and a contradiction abou
 - **Shot-selection endogeneity is not solved.** The model treats observed shot mix as
   opportunity; some of it is choice.
 - **Nothing here is causal.**
-- **The reproducibility gate is trusted from CI, not from the machine this was built on.**
-  That workstation turned out to have a hardware fault — a kernel-mode bugcheck, a WHEA
-  corrected machine-check from Processor Core, and a ninety-line script using nothing but
-  numpy and Python dicts that reproduces random access violations with this repository
-  entirely out of the picture. Under sustained memory pressure it produces wrong answers,
-  not only crashes, which makes every number it computed suspect. So `train --verify` and
-  `selection --verify` run nightly on Linux runners
-  ([`repro.yml`](.github/workflows/repro.yml)), and the committed run logs they compare
-  against are regenerated there too ([`refit.yml`](.github/workflows/refit.yml)) rather than
-  locally. A gate calibrated to a fault is worse than no gate.
-
-  Running it on a second platform for the first time immediately found two real defects that
-  one machine could never have shown: a cross-validation split whose fold membership depended
-  on the thread-pool size, and a 1e-6 drift tolerance applied to binned estimators that are
-  discontinuous in the predictions. Both are fixed; both are described in
-  [`docs/modeling.md`](docs/modeling.md).
+- **Every published number is trusted from CI, not from the machine that produced it.** The
+  development workstation has a hardware fault that corrupts memory under sustained pressure
+  — it returns wrong answers, not only crashes — so every model refit and every verification
+  runs on Linux runners, and the baselines they compare against are regenerated there too. A
+  gate calibrated to a faulty machine is worse than no gate. Moving it to a second platform
+  immediately surfaced two defects one machine could never have shown; both are in
+  [`docs/modeling.md`](docs/modeling.md) with what they moved.
 
 ## State of play
 
