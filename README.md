@@ -692,13 +692,11 @@ above rather than absorbed silently.
 
 ## Reading this repository
 
-[**STUDY_GUIDE.md**](STUDY_GUIDE.md) is the guided tour: every design decision and the
-alternative it rejected, the data-engineering findings in the order they were found, what the
-ML actually does, a table of **every bug I found in my own published numbers**, and a file-by-file
-walkthrough with a spoken script.
-
-Start there if you want the reasoning. Start with [`docs/modeling.md`](docs/modeling.md) if
-you want the corrections with their magnitudes.
+Start with [`docs/modeling.md`](docs/modeling.md): every place a first answer here was wrong,
+what the right one was, and how much it moved. Then
+[`docs/design/01-portable-rearchitecture.md`](docs/design/01-portable-rearchitecture.md) for
+what each Snowflake service was replaced with and **what was lost**, beside the unedited
+original design it supersedes.
 
 ## Quickstart
 
