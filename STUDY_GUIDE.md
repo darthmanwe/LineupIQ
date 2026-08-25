@@ -432,6 +432,111 @@ matters — two players who share floor time compete for the same credit, so the
 are negatively correlated, and dropping it _understates_ the uncertainty of precisely the
 quantity a trade projection is.
 
+### Ranking with a covariance, not with a diagonal
+
+`/lineups/optimal-plays` was the last route I built, and it is the one where the statistics
+and the interface are the same decision.
+
+The arithmetic is nothing. The priced shift is already a sum over zones, so splitting it
+gives nine per-zone contributions and sorting them is one line. The difficulty is that **a
+sorted list reads as a claim that the first beats the second**, and the whole effect prices
+at 0.19 points per 100 in standard deviation spread over nine zones — so most of those
+implied claims are not supported. A ranked list is a stack of pairwise assertions the model
+never made.
+
+So each pair gets tested before the list is served as an ordering. And the obvious test is
+wrong:
+
+> Draw an 80% interval around each contribution. If two intervals overlap, call the pair
+> indistinguishable.
+
+That is wrong in the direction that looks careful, which is why it is worth being able to
+explain. Zone shares come out of a softmax and sum to one — share that appears at the rim
+came from somewhere else — so two contributions are strongly **negatively** correlated:
+
+```
+Var(a − b) = Var(a) + Var(b) − 2·Cov(a, b)
+```
+
+With a large negative covariance, the difference is far better determined than either
+endpoint. The overlap test drops that term entirely and refuses to rank pairs that separate
+decisively. On a real reportable lineup:
+
+```
+#2  corner_three_left    +0.2062   [+0.1754, +0.2371]
+#3  corner_three_right   +0.1894   [+0.1611, +0.2178]
+```
+
+Those intervals overlap across most of their length. The two zones are still ranked, because
+`se(a − b)` is a fraction of either marginal error — they move together almost perfectly, so
+the *gap* between them is well measured even though neither level is. Refusing to order them
+would have thrown away a real finding.
+
+**This is why `selection_model.json` ships a 20×20 matrix rather than twenty numbers**, and
+the justification is measured rather than asserted: 7.4% of ranked pairs separate on the
+difference and would have been declined by the overlap test. Every response carries
+`diagonal_would_refuse` for its own request, so the design decision is auditable from the
+outside.
+
+The same identity appears in the RAPM section above, for the same reason and with the sign
+reversed: two players who share floor time compete for the same credit, so *their* estimates
+are negatively correlated and dropping the covariance **understates** the uncertainty of a
+trade contrast. One covariance term, two opposite errors, depending on which direction you
+are asking about. That symmetry is worth having ready.
+
+**The gradient is finite-differenced on the served scorer, deliberately.** A softmax
+difference times a constant is differentiable by hand, and I did not do it by hand. A
+hand-derived gradient is a second implementation of the model, and it fails in the worst
+available way: nothing raises, no number looks implausible, the intervals are simply the
+wrong width. Differencing the scorer means the gradient cannot describe a different model
+than the one being served — and it means the TypeScript parity check compares two *scorers*
+rather than two transcriptions of one formula. Forty scorer calls per request, a few hundred
+flops each, against a 10 ms budget.
+
+The parity fixture asserts the **standard errors**, not only the ranks. A ranking is a
+sequence of comparisons, and comparisons survive exactly the class of error a variance
+calculation makes: two implementations can agree on every rank while disagreeing about every
+interval by a factor of two. A fixture that checked only the order would pass precisely when
+the thing it exists to check is broken.
+
+#### The banding, and the bug in my first version
+
+Zones that cannot be separated share a rank. Building those groups is where I got it wrong.
+
+The first version was single linkage over the whole ranked list: for each zone, scan every
+existing band and join the first one holding a member it could not separate from. That is a
+correct description of connected components, and it produced **rank sequences like 1, 2, 2,
+1**. The parity suite caught it on the monotonicity assertion.
+
+The cause is worth understanding, because it is not an implementation slip. The difference
+test has a *per-pair* standard error, so a wider gap can separate while a narrower gap
+strictly inside it does not. Indistinguishability is therefore not an interval relation and
+its components can interleave — zone 6 genuinely belonging with zone 1 while zones 2 through
+5 form their own group. That is not renderable as a ranked list, and it is not coherent as
+one either.
+
+Bands are now maximal **contiguous** runs, which is what makes `rank` monotone in list
+position — the property any reader will assume without checking. Contiguity is a real
+constraint and it is not free, so the cost is counted rather than waved at: 0.53% of pairs
+are indistinguishable and still land in different bands. That number is in the README.
+
+#### One refusal that inverts the usual reading
+
+A lineup below the reportable possession floor gets **no magnitudes and keeps its ranks**.
+
+That looks backwards until you separate the two questions. A magnitude — "this lineup is
+worth +2.1 points per 100 at the rim" — is a claim about those five players, and below the
+floor there is no evidence for it. An *ordering* is a claim about the model's own precision:
+whether two coefficient-driven contributions separate at the pre-registered level. That comes
+from 671,251 attempts fitting twenty parameters, and not from this lineup's possessions at
+all. So the ranks survive and the numbers go.
+
+And a defect I shipped and then removed, which is the more useful half: the first version
+nulled `points_per_100` and kept `interval`. An interval is centred on the point estimate, so
+that handed the refused number straight back as `(lo + hi) / 2`. **A refusal that does not
+refuse is worse than no refusal**, because it looks like the contract is being kept. The
+sweep asserts the interval is null now.
+
 ### The trade simulator and its backtest
 
 **The minutes rule is a visible input.** How much an arriving player plays is a coaching
@@ -967,6 +1072,32 @@ immediately — the very next run was killed and the walk-forward results surviv
 
 ---
 
+### A pre-registration pin that a line ending could break
+
+The support thresholds are hash-pinned: CI asserts the SHA-256 of
+`configs/support_thresholds.json` is unchanged, so loosening a floor to make a demo look
+better is a build failure rather than a judgement call. That mechanism is the credibility of
+the whole refusal contract.
+
+The first version hashed the file's **raw bytes**. `.gitattributes` sets
+`* text=auto eol=lf`, so a Windows working copy can hold CRLF while the repository holds LF —
+and the identical pre-registered thresholds then produce two different digests. The moment I
+rewrote that file from Windows, every Linux job failed with *"the support thresholds
+changed"*, which is the loudest available message for a thing that had not happened.
+
+**A pin that a line-ending change can break is worse than no pin**, because the obvious
+repair is to update the constant, and the constant is the claim. Do that twice and the pin
+means nothing while still appearing in the README. The digest is now taken over LF-normalised
+bytes — it is a pin on the thresholds, not on the platform that checked them out — and there
+is a test that hashes a CRLF copy and an LF copy of identical content and asserts they agree.
+
+This is the same finding as [comparing a float artefact like a float
+artefact](#comparing-a-float-artefact-like-a-float-artefact), arriving from the opposite
+direction: there the gate was too strict about floats, here it was strict about something
+that was not part of the claim at all. Both reduce to **hash or compare the thing the way the
+thing is defined.** I have now reached that conclusion four times in this repository, which
+is the argument for writing it down where the next person will hit it.
+
 ## Part 7 — Bugs I found in my own work
 
 Keep this list. It is the most credible part of the story.
@@ -1014,8 +1145,10 @@ report renderer is pure ASCII.
   substitute and are labelled as such.
 - The Workers AI dense retrieval leg.
 - The **lineup optimizer**: searching over combinations rather than scoring one you chose.
-  Scoring is live — `POST /api/lineups/score`, with a picker on the Lineup page — so what is
-  missing is the concave allocator and the search, not the model.
+  Scoring is live, and so is ranking the zones a chosen lineup moves —
+  `POST /api/lineups/score` and `POST /api/lineups/optimal-plays`, both with a picker on the
+  Lineup page. What is missing is the concave allocator and the search over `C(450, 5)`
+  combinations, not the model.
 - The trade simulator's served deltas. The backtest exists and its own verdict is
   `UNDERPOWERED`; serving a projection whose power analysis says no accuracy claim follows
   would be the exact failure this repository is built to avoid, so the route stays at `501`
@@ -1026,30 +1159,13 @@ report renderer is pure ASCII.
 
 **What I would do next, in order:**
 
-1. **Report the standard errors on the front page, and retire a claim I made about them.**
-   They are now fitted and served, and they contradicted my own expectation: I built the
-   `indeterminate` verdict expecting `spacing_min_x_three` (+0.097) and `live_ball_x_rim`
-   (+0.087) to fall into it, and **nothing did** — the smallest `|z|` in the model is 4.0.
-   At 671,251 attempts against twenty parameters there is an enormous amount of evidence
-   about each one. I had confused a coefficient's size with its precision.
-
-   What remains is presentational and worth doing: the intervals belong beside the priced
-   effect in the README, because together they make the point neither makes alone —
-   **every term is overwhelmingly significant and the whole effect is worth 0.19 points
-   per 100 attempts.** Those are the same fact from two sides, and a reader given only
-   the first will draw the wrong conclusion.
-
-   It also unblocks `/lineups/optimal-plays`, whose whole point is refusing to rank two
-   actions whose intervals overlap. With the covariance in hand the overlap threshold is
-   derived rather than chosen, so that route can now be built honestly.
-
-2. **A minutes model.** The trade projection's biggest weakness is not the player estimates —
+1. **A minutes model.** The trade projection's biggest weakness is not the player estimates —
    it is that minutes are assumed. But the variance decomposition says minutes carry only
    13%, so this is a _correctness_ improvement rather than a precision one.
-3. **More seasons.** Every underpowered result here is underpowered because of sample size.
+2. **More seasons.** Every underpowered result here is underpowered because of sample size.
    RAPM reliability at 0.4 and an MDE of 1.00 both improve with `√n`, and the pipeline is
    already season-parameterised.
-4. **Shot-selection at possession grain.** The selection model conditions on an attempt
+3. **Shot-selection at possession grain.** The selection model conditions on an attempt
    happening. Modelling _whether_ a possession produces an attempt, and where, would close
    the loop to points per possession — which is what the product actually claims.
 
@@ -1194,6 +1310,54 @@ Point at the zone table underneath:
 > "Rim one-three-three, corner threes one-one-six, mid-range point-eight-two. That's the shot
 > chart everybody knows, and it's in the generated output on purpose — a sign error in the
 > pricing would produce a table that's completely plausible and exactly backwards."
+
+### Beat 3c (2 min) — ranking without overclaiming · open `services/ml/src/lineupiq/serve/plays.py`
+
+> "Once you have a priced effect per zone, the product wants a ranked list. That is one line
+> of sorting and a genuine statistics problem, because a sorted list *reads as* a claim that
+> the first beats the second — and at 0.19 points per 100 spread over nine zones, most of
+> those claims are not supported."
+
+Show the docstring, then the live endpoint on a reportable lineup:
+
+```
+#2  corner_three_left    +0.2062   [+0.1754, +0.2371]
+#3  corner_three_right   +0.1894   [+0.1611, +0.2178]
+```
+
+> "Those intervals overlap across most of their length, and the two zones are still ranked.
+> The obvious test — do the intervals overlap — is wrong here, and wrong in the direction
+> that looks careful. Shares come out of a softmax and sum to one, so what one zone gains
+> another loses: the two contributions are strongly negatively correlated, and
+> `Var(a − b) = Var(a) + Var(b) − 2·Cov(a, b)`. The difference is far better determined than
+> either endpoint. Comparing marginal intervals throws that term away and refuses to rank
+> things the model really can order."
+
+Then the measurement, not the argument:
+
+> "That is why the export ships a 20×20 covariance rather than twenty standard errors, and
+> the response carries `diagonal_would_refuse` so the decision is auditable per request. Over
+> 2,000 random lineups, 7.4% of ranked pairs separate on the difference and would have been
+> declined by the cheaper test."
+
+If there is time, the two failures — both are better than the feature:
+
+> "The first banding scanned every band for a member it could not separate from. Because the
+> difference test has a per-pair standard error, a wider gap can separate while a narrower one
+> inside it does not, so bands interleaved and it produced rank sequences like 1, 2, 2, 1.
+> The parity fixture caught it on a monotonicity assertion."
+
+> "And the route originally nulled `points_per_100` on a low-support lineup while still
+> shipping `interval`. An interval is centred on the point estimate, so that handed the
+> refused number straight back as `(lo + hi) / 2`. A refusal that does not refuse is worse
+> than no refusal, because it looks like the contract is being kept."
+
+**Expected question — "why 80% and not 95%?"** Because this threshold does not gate whether a
+number is shown; the possession floor does that. It gates whether a list is presented as
+ordered. Refusing to order two plays that genuinely differ wastes information the model has;
+ordering two that do not invents information it does not. At nine zones the second would
+happen constantly. It is pre-registered in the hash-pinned thresholds file, not chosen next to
+the code that wanted it loose.
 
 ### Beat 4 (2 min) — the underpowered verdict · open the README trade block
 
