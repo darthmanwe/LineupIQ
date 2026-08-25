@@ -557,10 +557,10 @@ it first.
 | `inherit` | 146 | -0.004 | -0.253 | -0.040 | 49.3% [41%, 57%] | 3.743 |
 
 **The placebo arm is the number that settles it.** The identical machinery runs on
-64 players who did *not* move, pretending each "arrived" at his
+75 players who did *not* move, pretending each "arrived" at his
 own team on a matched date. Swapping a player for himself projects exactly +0.000, which is the identity holding -- if it drifted, every number above would be measuring a pipeline bug.
 
-Those placebos still show a mean absolute DiD swing of **2.72 per 100**. That is how far a team's rating moves across an arbitrary mid-season
+Those placebos still show a mean absolute DiD swing of **2.97 per 100**. That is how far a team's rating moves across an arbitrary mid-season
 cutoff with no roster change at all, and it is the floor below which nothing here
 is measurable. The real moves' projection error is 3.74 -- larger than the placebo swing, so **the projection does not beat assuming no
 change.**

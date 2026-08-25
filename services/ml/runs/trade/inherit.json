@@ -1,22 +1,22 @@
 {
   "minutes_rule": "inherit",
   "n_moves": 146,
-  "n_placebo": 64,
+  "n_placebo": 75,
   "notes": [
     "lambda selected on the first modelled season rather than a strictly earlier one; there is no earlier season in the corpus"
   ],
   "placebo": {
     "correlation_projected_did": NaN,
     "correlation_projected_observed": NaN,
-    "mean_abs_did": 2.7220833072526505,
-    "mean_abs_error_vs_did": 2.7220833072526505,
-    "mean_did": -0.0588422087029522,
-    "mean_observed": -0.21328496506666444,
+    "mean_abs_did": 2.96842764048078,
+    "mean_abs_error_vs_did": 2.96842764048078,
+    "mean_did": 0.4547763335699385,
+    "mean_observed": 0.18673707304451725,
     "mean_projected": 0.0,
-    "n": 64,
+    "n": 75,
     "n_with_signed_projection": 0,
-    "sd_did": 3.6209972344316776,
-    "sd_observed": 3.5118525351865606,
+    "sd_did": 3.792666981711373,
+    "sd_observed": 3.521392653440656,
     "sign_agreement_ci": [
       NaN,
       NaN

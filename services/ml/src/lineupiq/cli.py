@@ -676,6 +676,21 @@ def selection(
 #: would produce.
 RAPM_TOLERANCE = 1e-12
 
+#: How far a trade-backtest number may move before it counts as a change.
+#:
+#: Looser than RAPM's 1e-12, and the reason is the estimator rather than taste.
+#: These numbers come out of a cluster bootstrap: 2,000 resamples of arrivals,
+#: a statistic per resample, then percentiles of the resulting distribution.
+#: Every replicate is a fresh sum over a fresh index array, so the accumulated
+#: last-place differences are larger than a single ridge solve's -- and the
+#: percentiles are *selections* from a sorted array, so a difference that would
+#: round away in a mean instead moves which replicate is picked.
+#:
+#: 1e-9 is far below any difference that a changed model, a changed rule or a
+#: changed sample could produce, and far above what the bootstrap's own
+#: arithmetic contributes.
+TRADE_TOLERANCE = 1e-9
+
 
 @app.command()
 def rapm(
@@ -880,6 +895,11 @@ def export() -> None:
 def backtest(
     rule: str = typer.Option("inherit", help="Minutes rule: inherit, historical, conservative."),
     buckets: int = typer.Option(6, help="Cutoff buckets; one RAPM fit per bucket."),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Re-run and compare to the committed run log instead of writing it.",
+    ),
     memory_cap_gb: float = typer.Option(
         DEFAULT_MEMORY_CAP_GB, help="Hard ceiling on process memory. 0 disables the cap."
     ),
@@ -983,11 +1003,43 @@ def backtest(
         "variance": result.variance,
         "notes": result.notes,
     }
+    committed_path = directory / f"{result.minutes_rule}.json"
+
+    if check:
+        # The last artefact in this repository that was still gated by
+        # `git diff --exit-code`. Byte identity is the wrong test for a file of
+        # correlations, mean absolute errors and bootstrap percentiles: none of
+        # those is bit-portable, so the gate failed on a platform change and
+        # passed on a rounding coincidence. Structure stays exact -- a changed
+        # verdict, a lost note, a move that appeared or vanished are differences
+        # at any tolerance, and those are the changes that would matter.
+        from lineupiq.validate.reproduce import compare_artefacts
+
+        if not committed_path.exists():
+            console.print(f"[bold red]No committed run log at {committed_path}.[/]")
+            raise typer.Exit(code=1)
+
+        committed = json.loads(committed_path.read_text(encoding="utf-8"))
+        fresh = json.loads(json.dumps(payload))
+        drifts = compare_artefacts(
+            f"trade/{result.minutes_rule}.json", committed, fresh, tolerance=TRADE_TOLERANCE
+        )
+        if drifts:
+            console.print(f"\n[bold red]{len(drifts)} value(s) moved[/]")
+            for drift in drifts[:20]:
+                console.print(f"  - {drift}")
+            if len(drifts) > 20:
+                console.print(f"  … and {len(drifts) - 20} more")
+            raise typer.Exit(code=1)
+        console.print(
+            f"\n[green]The trade backtest reproduces.[/] [dim]Structure exactly; "
+            f"floats to {TRADE_TOLERANCE:g}.[/]"
+        )
+        return
+
     text = json.dumps(payload, indent=2, sort_keys=True)
-    (directory / f"{result.minutes_rule}.json").write_text(
-        f"{text}\n", encoding="utf-8", newline="\n"
-    )
-    console.print(f"\nrun log written to [cyan]{directory / f'{result.minutes_rule}.json'}[/]")
+    committed_path.write_text(f"{text}\n", encoding="utf-8", newline="\n")
+    console.print(f"\nrun log written to [cyan]{committed_path}[/]")
 
 
 @app.command()

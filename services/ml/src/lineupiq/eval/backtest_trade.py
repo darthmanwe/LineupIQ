@@ -134,7 +134,12 @@ def _control_delta(
     mean that made it trade in the first place.
     """
     deltas: list[float] = []
-    for team in ratings.filter(pl.col("season") == season)["team_id"].unique().to_list():
+    # Sorted, because the mean below is a left-to-right float sum and `unique()`
+    # does not promise an order. Not a structural bug like the placebo pool -- the
+    # same teams are always included -- but it made the control delta differ in
+    # the last places between machines, and every real move's DiD is measured
+    # against it.
+    for team in sorted(ratings.filter(pl.col("season") == season)["team_id"].unique().to_list()):
         if int(team) in exclude:
             continue
         before, after, n_before, n_after = _team_window(ratings, int(team), season, cutoff_game)
@@ -363,18 +368,38 @@ def run_trade_backtest(
             .group_by("player_id")
             .agg(pl.len().alias("n"))
             .filter(pl.col("n") >= 500)
+            # **The sort is load-bearing, and its absence was a real bug.**
+            #
+            # `group_by` makes no ordering promise, so this list arrived in
+            # whatever order the parallel aggregation produced -- and `rng.choice`
+            # below then drew a *different set of players* on a machine with a
+            # different core count. The seed made the draw look reproducible while
+            # the population it drew from was not. It surfaced as `n_placebo`
+            # moving from 64 to 66 between two runs on the same machine, which is
+            # not a rounding difference: it is a different experiment.
+            #
+            # `player_id` is unique after the aggregation, so this is a total order.
+            .sort("player_id")
         )
         candidates = [p for p in incumbents["player_id"].to_list() if int(p) not in movers]
         if candidates:
             chosen = rng.choice(candidates, size=min(len(members), len(candidates)), replace=False)
             for player in chosen:
+                # The team-season this player belongs to, defined rather than
+                # picked. The previous version took `.head(1)` of an unordered
+                # filter, which is an arbitrary row -- and since a player appears
+                # across seasons, that could attribute him to a season he barely
+                # played in. "Where most of his possessions were" is both
+                # deterministic and the answer the question actually wants.
                 team = (
                     usable_possessions(possessions)
                     .filter(
                         (pl.col("game_id") < cutoff)
                         & pl.col("off_lineup").list.contains(int(player))
                     )
-                    .select("offense_team_id", "season")
+                    .group_by("offense_team_id", "season")
+                    .agg(pl.len().alias("n"))
+                    .sort(["n", "season", "offense_team_id"], descending=[True, True, False])
                     .head(1)
                 )
                 if team.is_empty():

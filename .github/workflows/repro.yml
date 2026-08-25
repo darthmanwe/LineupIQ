@@ -64,11 +64,15 @@ jobs:
       - name: RAPM reproduces
         run: uv run lineupiq rapm --check --memory-cap-gb 12
 
-      # The trade backtest has no --check yet, so it is regenerated and diffed.
-      # Its numbers are cluster-bootstrap quantiles, which is exactly the shape
-      # that will need a tolerance too -- noted rather than pretended otherwise.
-      - name: The trade backtest is unchanged
-        run: uv run lineupiq backtest --rule inherit --memory-cap-gb 12
+      # Compared with a tolerance, like every other float artefact here. The
+      # byte-diff this replaces was the last one, and adding --check found a real
+      # bug on its first run: the placebo pool came out of an unsorted group_by,
+      # so a seeded rng.choice drew a different *set* of players between runs and
+      # n_placebo moved from 64 to 66. A seed over an unordered population is not
+      # reproducibility, and git diff had never noticed because the committed
+      # baseline happened to match the machine that wrote it.
+      - name: The trade backtest reproduces
+        run: uv run lineupiq backtest --check --rule inherit --memory-cap-gb 12
       - name: Assert nothing moved
         working-directory: .
         run: git diff --stat -- services/ml/runs/ data/gold/
