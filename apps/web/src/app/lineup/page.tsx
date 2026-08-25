@@ -170,10 +170,11 @@ export default function LineupPage() {
       </div>
 
       <div className="note">
-        <strong>What is still not built.</strong> The optimizer — search over lineups rather than
-        scoring one you chose — and the trade simulator&rsquo;s served deltas.{" "}
-        <code>POST /api/lineups/optimal-plays</code> and <code>POST /api/trades/simulate</code>{" "}
-        return <code>501</code> naming what will back them.
+        <strong>What is still not built.</strong> The optimizer proper — search <em>over</em>
+        lineups rather than scoring one you chose — and the trade simulator&rsquo;s served deltas.{" "}
+        <code>POST /api/lineups/allocate</code> and <code>POST /api/trades/simulate</code> return{" "}
+        <code>501</code> naming what will back them. Scoring a chosen five and ranking the zones it
+        moves are both live.
       </div>
     </main>
   );

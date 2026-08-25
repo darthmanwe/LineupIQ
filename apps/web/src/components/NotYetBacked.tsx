@@ -13,6 +13,16 @@ export type NotYetBackedProps = {
   endpoints: readonly string[];
   /** What this page will refuse to answer, and why. */
   refusal?: string;
+  /**
+   * The part of this page's subject that *is* built, if any.
+   *
+   * A page can be unbacked as a product surface while the work behind it is
+   * done and published. The Evidence page had exactly that shape and listed a
+   * live endpoint among the ones it said were missing -- so the page was
+   * understating the repository, which is a nicer failure than overstating it
+   * and still a failure.
+   */
+  alreadyDone?: { what: string; endpoint: string };
 };
 
 export function NotYetBacked({
@@ -22,6 +32,7 @@ export function NotYetBacked({
   backedBy,
   endpoints,
   refusal,
+  alreadyDone,
 }: NotYetBackedProps) {
   return (
     <section className="card pending">
@@ -52,6 +63,15 @@ export function NotYetBacked({
           <>
             <dt>will refuse</dt>
             <dd>{refusal}</dd>
+          </>
+        )}
+
+        {alreadyDone && (
+          <>
+            <dt>already built</dt>
+            <dd>
+              {alreadyDone.what} <code>{alreadyDone.endpoint}</code>
+            </dd>
           </>
         )}
       </dl>

@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 // there is no filesystem in workerd, and an `import.meta.url` path resolves to
 // `/C:/...` on Windows, which its shim rejects outright.
 import overview from "../../web/src/app/page.tsx?raw";
+import evidencePage from "../../web/src/app/evidence/page.tsx?raw";
+import lineupPage from "../../web/src/app/lineup/page.tsx?raw";
+import qualityPage from "../../web/src/app/quality/page.tsx?raw";
+import tradePage from "../../web/src/app/trade/page.tsx?raw";
 
 import app from "../src/index";
 import { PROBLEM_CONTENT_TYPE } from "../src/http/problem";
@@ -192,5 +196,69 @@ describe("the site does not contradict the registry", () => {
     // on the floor" survived on the page long after both were done.
     expect(rendered).not.toMatch(/Next:\s*ingest/i);
     expect(rendered).not.toMatch(/What this will do/i);
+  });
+});
+
+describe("no page says a live endpoint is unbuilt", () => {
+  /**
+   * The generalisation of the guard above, and it exists because fixing the
+   * overview page was not enough: the Lineup page said
+   * `POST /api/lineups/optimal-plays` returns 501 the day after that route went
+   * live, and the Evidence page listed `GET /api/eval/retrieval` among the
+   * endpoints it was waiting on -- a route that has been live and publishing
+   * measured recall for some time.
+   *
+   * All three are the same failure. Prose is the only thing in this repository
+   * with no staleness check, and the failure is always in the same direction:
+   * the site understates what the API does, so a visitor concludes less is
+   * built than is.
+   *
+   * The check is deliberately narrow. It does not police how a page describes a
+   * route; it asserts that no page puts a *live* path next to `501`, `not yet`,
+   * `will back` or `not built`, which is the specific sentence that has now gone
+   * wrong three times.
+   */
+  const PAGES: Array<[string, string]> = [
+    ["overview", overview],
+    ["lineup", lineupPage],
+    ["trade", tradePage],
+    ["quality", qualityPage],
+    ["evidence", evidencePage],
+  ];
+
+  const UNBUILT = /501|not yet|will back|not built|arrives in/i;
+
+  const strip = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  const livePaths = ROUTES.filter((r) => r.state === "live").map((r) => r.path);
+
+  it.each(PAGES)("%s page", (name, source) => {
+    const rendered = strip(source);
+    // Sentences, roughly: split on the boundaries a claim actually lives inside.
+    const sentences = rendered.split(/(?<=[.!?])\s+|\n\n/);
+
+    for (const path of livePaths) {
+      // Parameterised paths never appear verbatim in prose, and the registry
+      // root `/` is a substring of every closing JSX tag on every page -- the
+      // first version of this check flagged three pages for containing `</div>`.
+      if (path.includes(":") || path.length < 6) continue;
+      for (const sentence of sentences) {
+        if (!sentence.includes(path)) continue;
+        expect(
+          UNBUILT.test(sentence),
+          `${name} page describes the live route ${path} as unbuilt: ${sentence.trim().slice(0, 160)}`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("finds the live paths it is checking against", () => {
+    // A guard that silently checks nothing passes forever. If the registry were
+    // ever restructured so `path` stopped being a plain string, every assertion
+    // above would vacuously succeed.
+    expect(livePaths.filter((p) => !p.includes(":") && p.length >= 6).length).toBeGreaterThan(8);
+    expect(livePaths).toContain("/lineups/optimal-plays");
+    expect(livePaths).toContain("/eval/retrieval");
   });
 });
