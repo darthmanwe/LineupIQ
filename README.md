@@ -785,7 +785,7 @@ cd services/ml && uv sync --extra dev
 uv run pytest                    # offline and free by default
 uv run lineupiq seasons          # declared scope, stated in exactly one place
 uv run lineupiq verify           # re-derive every gold checksum + run the DQ gates
-uv run lineupiq parity --check   # the Python/TypeScript contract, both fixtures
+uv run lineupiq parity --check   # the Python/TypeScript contract, all three fixtures
 uv run lineupiq support          # the pre-registered refusal thresholds
 uv run lineupiq report check     # the README is not stale
 
