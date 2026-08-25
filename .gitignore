@@ -65,6 +65,6 @@ playwright-report/
 Thumbs.db
 desktop.ini
 
-# Local only. The study guide is my own walkthrough notes, not part of the
-# published artefact.
+# Local only. My own notes, not part of the published artefact.
 STUDY_GUIDE.md
+docs/LINKEDIN.md
