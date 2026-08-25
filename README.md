@@ -205,10 +205,10 @@ else is on the floor, then projects how a trade changes it.
 
 | Page                    | What it answers                                                                                                     |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Lineup Optimizer**    | **Live:** the shot-value surface by zone, plus a picker — choose any five players and see how that lineup moves a shooter's attempts between zones. Refusals render as refusals. |
-| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
-| **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.          |
-| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
+| **Lineup Optimizer**    | **Live.** The shot-value surface by zone, plus a picker: choose any five players, see how that lineup moves a shooter's attempts between zones, and get the zones ranked with their intervals. Refusals render as refusals. |
+| **Trade Simulator**     | **Live.** The backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
+| **Data Quality & Eval** | **Live.** All 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
+| **Evidence / Comps**    | **Not built as a surface.** The retrieval *evaluation* is done and published at `/api/eval/retrieval` — three corpora ablated, per-retriever Recall@10 and nDCG@10, and a finding that BM25 alone beats the hybrid. The search UI needs a deployed index. |
 
 What the closed-form serving constraint costs in log loss against the unconstrained
 gradient-boosted fit is measured and published in the results below, rather than absorbed
