@@ -8,6 +8,7 @@ import {
   type ZoneShape,
   type ZoneValue,
 } from "@/components/court/CourtHeatmap";
+import { PlayRanking, type PlayRankingResponse } from "@/components/PlayRanking";
 
 /**
  * The counterfactual, made clickable.
@@ -89,6 +90,7 @@ export function LineupScorer({
   const [defense, setDefense] = useState<number[]>(() => players.slice(5, 10).map((p) => p.id));
   const [useDefense, setUseDefense] = useState(true);
   const [result, setResult] = useState<ScoreResponse | null>(null);
+  const [ranking, setRanking] = useState<PlayRankingResponse | null>(null);
   const [refusal, setRefusal] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -126,26 +128,37 @@ export function LineupScorer({
     setFailed(null);
     setRefusal(null);
     try {
-      const response = await fetch("/api/lineups/score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shooter_id: shooter,
-          offense,
-          defense: useDefense ? defense : [],
-        }),
+      const body = JSON.stringify({
+        shooter_id: shooter,
+        offense,
+        defense: useDefense ? defense : [],
       });
+      const headers = { "Content-Type": "application/json" };
+      // Both endpoints, one click. The ranking is a decomposition of the number
+      // the scorer returns, so showing one without the other invites the reader
+      // to compare zone deltas by eye -- which is the comparison the ranking
+      // exists to say they usually cannot make.
+      const [response, ranked] = await Promise.all([
+        fetch("/api/lineups/score", { method: "POST", headers, body }),
+        fetch("/api/lineups/optimal-plays", { method: "POST", headers, body }),
+      ]);
       if (response.status === 422 || response.status === 400) {
         setRefusal((await response.json()) as Problem);
         setResult(null);
+        setRanking(null);
         return;
       }
       if (!response.ok) {
         setFailed(`The API returned ${response.status}.`);
         setResult(null);
+        setRanking(null);
         return;
       }
       setResult((await response.json()) as ScoreResponse);
+      // A ranking that failed on its own is not a reason to withhold the score.
+      // The covariance can be missing from an older export while the scorer is
+      // perfectly serviceable, and the endpoint returns 503 saying exactly that.
+      setRanking(ranked.ok ? ((await ranked.json()) as PlayRankingResponse) : null);
     } catch {
       // A static export served without the Worker behind it. Say so plainly
       // rather than leaving a spinner running.
@@ -154,6 +167,7 @@ export function LineupScorer({
           "`npx wrangler dev` from apps/api, or the deployed origin."
       );
       setResult(null);
+      setRanking(null);
     } finally {
       setBusy(false);
     }
@@ -295,6 +309,7 @@ export function LineupScorer({
                 }
               />
               <PricedShift result={result} />
+              {ranking && <PlayRanking ranking={ranking} />}
               {result.meta.warnings.map((warning) => (
                 <p className="scorer__warn" key={warning}>
                   {warning}

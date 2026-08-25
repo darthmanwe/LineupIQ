@@ -82,8 +82,25 @@ def load_thresholds(path: Path | None = None) -> SupportThresholds:
 
 
 def thresholds_hash(path: Path | None = None) -> str:
-    """SHA-256 of the thresholds file, asserted unchanged by CI."""
-    return hashlib.sha256((path or _thresholds_path()).read_bytes()).hexdigest()
+    """SHA-256 of the thresholds file, asserted unchanged by CI.
+
+    **Line endings are normalised before hashing, and that is not a detail.**
+
+    The first version hashed the raw bytes. `.gitattributes` sets
+    `* text=auto eol=lf`, so a checkout on Windows can hold CRLF while the same
+    commit on Linux holds LF -- and the same pre-registered thresholds then
+    produce two different digests. The pin failed on every Linux job the first
+    time this file was rewritten from Windows.
+
+    A pin that flips on a line-ending change is worse than no pin, because the
+    obvious repair is to update the constant, and the constant is the claim. The
+    fix is to hash what the pin is actually about: the content of the
+    thresholds, not the platform that checked them out. The same reasoning
+    applies to the artefact comparator -- compare a thing the way the thing is
+    defined.
+    """
+    raw = (path or _thresholds_path()).read_bytes()
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
 
 
 @dataclass(frozen=True)

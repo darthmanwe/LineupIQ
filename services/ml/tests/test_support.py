@@ -37,7 +37,37 @@ from lineupiq.models.support import (
 #: asserts every version-1 number *by value*, so the hash catches any edit and
 #: that test catches the specific edit that would matter. A future diff that
 #: lowers the possession floor and updates this constant still fails.
-PRE_REGISTERED_SHA256 = "75337764f3423013307844aa1a0cb143e202cd14cfc9b629db2083e5951808c1"
+#:
+#: The digest is taken over **LF-normalised** bytes. Rewriting the file from
+#: Windows put CRLF in the working copy while `.gitattributes` kept LF in the
+#: repository, and the identical thresholds hashed differently on the two
+#: platforms -- so the pin failed on every Linux job for a reason that had
+#: nothing to do with the thresholds. A pin that a line-ending change can break
+#: is a pin whose obvious repair is to edit the constant, and the constant is
+#: the claim.
+PRE_REGISTERED_SHA256 = "1fa7d8e5d8337a0efa84b5a85b8a9f9329329a81a0841874f23c8354c4caf80b"
+
+
+def test_the_pin_survives_a_line_ending_change(tmp_path: object) -> None:
+    """A CRLF checkout must not read as a changed pre-registration.
+
+    This is the regression for the failure above: the raw-bytes version of the
+    digest made a Windows checkout and a Linux checkout of the same commit
+    disagree about whether the thresholds had been edited.
+    """
+    import pathlib
+
+    from lineupiq.models.support import _thresholds_path
+
+    source = _thresholds_path().read_bytes().replace(b"\r\n", b"\n")
+    directory = pathlib.Path(str(tmp_path))
+    unix = directory / "lf.json"
+    windows = directory / "crlf.json"
+    unix.write_bytes(source)
+    windows.write_bytes(source.replace(b"\n", b"\r\n"))
+
+    assert thresholds_hash(unix) == thresholds_hash(windows)
+    assert thresholds_hash(unix) == PRE_REGISTERED_SHA256
 
 
 def test_thresholds_are_pre_registered_and_unchanged() -> None:
