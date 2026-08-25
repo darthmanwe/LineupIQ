@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 // `/C:/...` on Windows, which its shim rejects outright.
 import overview from "../../web/src/app/page.tsx?raw";
 import evidencePage from "../../web/src/app/evidence/page.tsx?raw";
+import layout from "../../web/src/app/layout.tsx?raw";
 import lineupPage from "../../web/src/app/lineup/page.tsx?raw";
 import qualityPage from "../../web/src/app/quality/page.tsx?raw";
 import tradePage from "../../web/src/app/trade/page.tsx?raw";
@@ -155,85 +156,74 @@ describe("unknown routes", () => {
   });
 });
 
-describe("the site does not contradict the registry", () => {
+/**
+ * Every surface of the site, including the shared layout.
+ *
+ * `layout` is in this list because leaving it out is how the last stale claim
+ * survived: the site-wide footer read "Nothing here is fitted yet. Every
+ * analytics endpoint returns 501 NOT_YET_BACKED" on *every* page of a site
+ * serving two fitted models, and the guard was only reading the five page files.
+ */
+const PAGES: Array<[string, string]> = [
+  ["layout", layout],
+  ["overview", overview],
+  ["lineup", lineupPage],
+  ["trade", tradePage],
+  ["quality", qualityPage],
+  ["evidence", evidencePage],
+];
+
+/**
+ * Comments stripped before matching.
+ *
+ * These files' own headers describe the stale text in order to explain why the
+ * guards exist, and the first version of the check matched that description and
+ * failed. A check that cannot tell a page from a note about the page is not
+ * checking the page.
+ */
+const strip = (source: string): string =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+describe("no surface claims the project is unbuilt", () => {
   /**
-   * The overview page is the first screen a visitor sees, and it went stale for
-   * the entire time this project was being built: it said "Milestone 1 of 8 —
-   * every analytics endpoint returns 501" while sixteen endpoints were live and
-   * both models were fitted.
+   * Prose is the only thing in this repository without a staleness check, and it
+   * has now gone wrong five times -- always in the same direction, always
+   * understating what the API does:
    *
-   * Every published *number* here is generated from a run log and re-derived in
-   * CI. None of that machinery covers prose, and prose is what told a visitor
-   * the project was not built. This is the cheapest possible guard on the one
-   * claim that actually misleads: the front page saying nothing works while the
-   * registry says otherwise.
-   */
-  /**
-   * Comments stripped first. The file's own header describes the stale text in
-   * order to explain why this guard exists, and the first version of the guard
-   * matched that description and failed — a check that cannot tell a page from
-   * a note about the page is not checking the page.
-   */
-  const rendered = overview.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-
-  it("does not claim endpoints are unbacked while the registry serves them", () => {
-    const liveRoutes = ROUTES.filter((r) => r.state === "live");
-    expect(liveRoutes.length).toBeGreaterThan(0);
-
-    // Phrases that are only true of a skeleton. Each one was, at some point,
-    // literally on the page.
-    for (const stale of [
-      /every analytics endpoint returns/i,
-      /Milestone \d+ of \d+/i,
-      /the skeleton is deployed/i,
-    ]) {
-      expect(rendered, `overview page still says: ${stale}`).not.toMatch(stale);
-    }
-  });
-
-  it("does not promise as future work something already built", () => {
-    // "Next: ingest three seasons ... and reconstruct which five players were
-    // on the floor" survived on the page long after both were done.
-    expect(rendered).not.toMatch(/Next:\s*ingest/i);
-    expect(rendered).not.toMatch(/What this will do/i);
-  });
-});
-
-describe("no page says a live endpoint is unbuilt", () => {
-  /**
-   * The generalisation of the guard above, and it exists because fixing the
-   * overview page was not enough: the Lineup page said
-   * `POST /api/lineups/optimal-plays` returns 501 the day after that route went
-   * live, and the Evidence page listed `GET /api/eval/retrieval` among the
-   * endpoints it was waiting on -- a route that has been live and publishing
-   * measured recall for some time.
+   *   - the overview page said "Milestone 1 of 8, every analytics endpoint
+   *     returns 501" while sixteen endpoints served fitted models;
+   *   - the Lineup page said `POST /api/lineups/optimal-plays` returns 501 the
+   *     day after that route went live;
+   *   - the Evidence page listed `GET /api/eval/retrieval` among the endpoints
+   *     it was waiting on;
+   *   - the Trade page named a missing dependency rather than the power analysis
+   *     as the reason its endpoint is withheld;
+   *   - and the footer said nothing was fitted, on every page at once.
    *
-   * All three are the same failure. Prose is the only thing in this repository
-   * with no staleness check, and the failure is always in the same direction:
-   * the site understates what the API does, so a visitor concludes less is
-   * built than is.
-   *
-   * The check is deliberately narrow. It does not police how a page describes a
-   * route; it asserts that no page puts a *live* path next to `501`, `not yet`,
-   * `will back` or `not built`, which is the specific sentence that has now gone
-   * wrong three times.
+   * Two checks. The first bans phrases that are only true of a skeleton. The
+   * second is deliberately narrower: it does not police how a page describes a
+   * route, only that no *sentence* puts a live route's path next to language
+   * that says it is not built.
    */
-  const PAGES: Array<[string, string]> = [
-    ["overview", overview],
-    ["lineup", lineupPage],
-    ["trade", tradePage],
-    ["quality", qualityPage],
-    ["evidence", evidencePage],
-  ];
-
   const UNBUILT = /501|not yet|will back|not built|arrives in/i;
-
-  const strip = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
   const livePaths = ROUTES.filter((r) => r.state === "live").map((r) => r.path);
 
-  it.each(PAGES)("%s page", (name, source) => {
+  it.each(PAGES)("%s: no skeleton-era phrasing", (name, source) => {
+    // Each of these was, at some point, literally on the site.
+    for (const stale of [
+      /every analytics endpoint returns/i,
+      /nothing here is fitted/i,
+      /Milestone \d+ of \d+/i,
+      /the skeleton is deployed/i,
+      /Next:\s*ingest/i,
+      /What this will do/i,
+    ]) {
+      expect(strip(source), `${name} still says: ${stale}`).not.toMatch(stale);
+    }
+  });
+
+  it.each(PAGES)("%s: no live route described as unbuilt", (name, source) => {
     const rendered = strip(source);
     // Sentences, roughly: split on the boundaries a claim actually lives inside.
     const sentences = rendered.split(/(?<=[.!?])\s+|\n\n/);

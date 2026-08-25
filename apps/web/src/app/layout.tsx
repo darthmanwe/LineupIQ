@@ -41,9 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           <footer className="colophon">
             <p>
-              Nothing here is fitted yet. Every analytics endpoint returns{" "}
-              <code>501 NOT_YET_BACKED</code> naming what will back it — see <a href="/api">/api</a>
-              . When numbers appear, they will be generated from run logs, never typed by hand.
+              Every number here is generated from a run log, never typed by hand. The full endpoint
+              list and each one&rsquo;s state is at <a href="/api">/api</a>.
             </p>
             <p>
               <a href="https://github.com/darthmanwe/LineupIQ">Source</a> · MIT · Kutlu Mizrak
