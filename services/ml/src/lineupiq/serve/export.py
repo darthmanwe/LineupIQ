@@ -375,6 +375,27 @@ def export_player_zones(paths: DataPaths) -> dict[str, Any]:
     }
 
 
+def _ranking_contract() -> dict[str, float]:
+    """The pre-registered ranking level, with its critical value resolved once.
+
+    `confidence` is what was pre-registered; `critical_value` is the two-sided
+    normal quantile it implies. Both are shipped: the Worker needs the second and
+    a reader needs the first, and computing one from the other in two languages
+    is two chances to get it wrong.
+    """
+    from scipy.stats import norm
+
+    from lineupiq.models.support import load_thresholds
+
+    thresholds = load_thresholds()
+    confidence = float(thresholds.ranking_confidence)
+    return {
+        "confidence": confidence,
+        "critical_value": _round(float(norm.ppf(0.5 + confidence / 2.0))),
+        "min_zone_share": float(thresholds.ranking_min_zone_share),
+    }
+
+
 def export_selection_model(paths: DataPaths) -> dict[str, Any]:
     """The served selection model: coefficients plus the per-player mixes.
 
@@ -404,6 +425,21 @@ def export_selection_model(paths: DataPaths) -> dict[str, Any]:
             if model.get("standard_errors") is None
             else [None if e is None else _round(e) for e in model["standard_errors"]]
         ),
+        # The full matrix, not the diagonal. `/lineups/optimal-plays` ranks nine
+        # priced contributions that are strongly correlated through the softmax,
+        # so the quantity it needs is `Var(a - b)` -- and the covariance term
+        # there is the difference between refusing to rank and ranking. 400
+        # rounded floats is about 8 KB; the diagonal would be cheaper and wrong.
+        "covariance": (
+            None
+            if model.get("covariance") is None
+            else [[_round(v) for v in row] for row in model["covariance"]]
+        ),
+        # Read from the pinned thresholds and shipped with the model so both
+        # implementations use the same critical value. The Worker has no inverse
+        # normal CDF, and adding one would be a second place this number could be
+        # wrong.
+        "ranking": _ranking_contract(),
         "observed_mix": {k: _round(v) for k, v in (model.get("observed_mix") or {}).items()},
         "sign_audit": model.get("sign_audit", {}),
         "n_shots": run.get("n_shots"),

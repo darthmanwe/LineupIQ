@@ -35,9 +35,11 @@ from lineupiq.validate.reproduce import Drift, compare_artefacts
 __all__ = [
     "FLOAT_TOLERANCE",
     "build_parity_fixture",
+    "build_plays_parity_fixture",
     "build_selection_parity_fixture",
     "check_fixtures",
     "write_parity_fixture",
+    "write_plays_parity_fixture",
     "write_selection_parity_fixture",
 ]
 
@@ -189,17 +191,26 @@ def write_parity_fixture(paths: DataPaths) -> Path:
 #: How many random (shooter, offence, defence, context) draws to score.
 N_SELECTION_CASES = 500
 
+#: Ranking cases. Far fewer than the scoring cases, and deliberately so.
+#:
+#: Every ranking costs forty scorer calls for the gradient plus thirty-six
+#: quadratic forms, and it exercises the *same* scorer the 507 scoring cases
+#: already cover. What these add is the delta method, the difference test and
+#: the banding, and a hundred-odd cases saturate those: the branch that has to
+#: be hit is a ranking the data cannot order at all, and that one is included
+#: by construction below rather than left to the sample.
+N_PLAYS_CASES = 120
 
-def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
-    """Score a sample of counterfactuals with the Python served scorer.
 
-    The fixture stores **utilities**, not just the softmax output. A softmax is a
-    contraction: two implementations that disagree in the fourth decimal of a
-    utility can agree to 1e-9 on the resulting share, especially for the small
-    zones. Comparing before the normalisation is the stronger check, so both are
-    stored and both are asserted.
+def _selection_requests(profiles: dict[str, Any]) -> list[Any]:
+    """The counterfactuals both selection fixtures score.
 
-    The sample is built to exercise the branches that a random draw would miss:
+    Shared rather than duplicated, so the ranking fixture cannot drift onto a
+    different corpus from the scoring fixture and quietly stop covering the edge
+    cases. The hand-built ones come first and in a fixed order, which is what lets
+    the ranking fixture take a prefix and still get all of them.
+
+    The sample is built to exercise the branches a random draw would miss:
 
     - a shooter with no profile at all, whose log ratio must be exactly zero
       rather than some arbitrary player's,
@@ -208,16 +219,11 @@ def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
     - the shooter listed among his own five, which must be excluded from his own
       spacing,
     - a team/season key that does not exist, which must fall back to the league,
+    - no defenders at all, so every opponent term is exactly zero,
     - every context flag on and off, since three of them multiply zone
       indicators and a sign error in one is invisible when the flag is false.
     """
-    from lineupiq.serve.export import export_selection_model, export_selection_profiles
-    from lineupiq.serve.score import ScoreRequest, score_selection
-
-    profiles = export_selection_profiles(paths)
-    model = export_selection_model(paths)
-    if not model.get("available"):
-        raise RuntimeError("no selection run log committed; run `lineupiq selection` first")
+    from lineupiq.serve.score import ScoreRequest
 
     known = sorted(int(k) for k in profiles["shooter_log_ratio"])
     team_keys = sorted(profiles["team_log_ratio"])
@@ -268,6 +274,29 @@ def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
             )
         )
 
+    return requests
+
+
+def build_selection_parity_fixture(paths: DataPaths) -> dict[str, Any]:
+    """Score a sample of counterfactuals with the Python served scorer.
+
+    The fixture stores **utilities**, not just the softmax output. A softmax is a
+    contraction: two implementations that disagree in the fourth decimal of a
+    utility can agree to 1e-9 on the resulting share, especially for the small
+    zones. Comparing before the normalisation is the stronger check, so both are
+    stored and both are asserted.
+
+    The corpus is :func:`_selection_requests`, shared with the ranking fixture.
+    """
+    from lineupiq.serve.export import export_selection_model, export_selection_profiles
+    from lineupiq.serve.score import score_selection
+
+    profiles = export_selection_profiles(paths)
+    model = export_selection_model(paths)
+    if not model.get("available"):
+        raise RuntimeError("no selection run log committed; run `lineupiq selection` first")
+
+    requests = _selection_requests(profiles)
     cases: list[dict[str, Any]] = []
     for request in requests:
         result = score_selection(request, profiles, model["coefficients"], model["term_names"])
@@ -313,6 +342,129 @@ def write_selection_parity_fixture(paths: DataPaths) -> Path:
     return path
 
 
+def build_plays_parity_fixture(paths: DataPaths) -> dict[str, Any]:
+    """Rank a sample of counterfactuals, and store the intervals as well as the order.
+
+    The order alone would be a weak fixture. Two implementations can produce the
+    same ranked list from intervals that differ by a factor of two -- the ranking
+    is a sequence of comparisons, and comparisons are robust to exactly the kind
+    of error a variance calculation makes. So the standard errors are stored and
+    asserted at 1e-9 alongside the ranks.
+
+    The requests are the **same** ones the scoring fixture uses, taken from the
+    front of that list so the hand-built edge cases are all included: the unseen
+    shooter, the one-teammate lineup, the empty defence, the flags-all-on case.
+    A ranking of a lineup whose scorer is untested would be testing two things at
+    once.
+
+    One case is chosen rather than sampled: the first request in the corpus whose
+    zones the model cannot order at all. That branch is the point of the whole
+    mechanism, it fires on about three per cent of requests, and a fixture that
+    covers it only by luck is a fixture that stops covering it when the sample
+    changes.
+    """
+    from lineupiq.serve.export import export_selection_model, export_selection_profiles
+    from lineupiq.serve.plays import rank_plays
+
+    profiles = export_selection_profiles(paths)
+    model = export_selection_model(paths)
+    if not model.get("available"):
+        raise RuntimeError("no selection run log committed; run `lineupiq selection` first")
+    if model.get("covariance") is None:
+        raise RuntimeError(
+            "the committed selection run log has no covariance matrix; "
+            "re-run `lineupiq selection` and `lineupiq export`"
+        )
+
+    contract = model["ranking"]
+    requests = _selection_requests(profiles)
+
+    def rank(request: Any) -> Any:
+        return rank_plays(
+            request,
+            profiles,
+            model,
+            confidence=contract["confidence"],
+            critical_value=contract["critical_value"],
+            min_zone_share=contract["min_zone_share"],
+        )
+
+    chosen = list(requests[:N_PLAYS_CASES])
+    # Guarantee the unordered branch. Searching forward from the end of the
+    # sample keeps the first N cases stable when this constant changes.
+    if all(rank(request).ordered for request in chosen):
+        for request in requests[N_PLAYS_CASES:]:
+            if not rank(request).ordered:
+                chosen.append(request)
+                break
+
+    cases: list[dict[str, Any]] = []
+    for request in chosen:
+        ranking = rank(request)
+        cases.append(
+            {
+                "request": {
+                    "shooter_id": request.shooter_id,
+                    "offense": list(request.offense),
+                    "defense": list(request.defense),
+                    "team_id": request.team_id,
+                    "season": request.season,
+                    "seconds_into_possession": request.seconds_into_possession,
+                    "live_ball": request.live_ball,
+                    "second_chance": request.second_chance,
+                    "clutch": request.clutch,
+                },
+                "plays": [
+                    {
+                        "zone": play.zone,
+                        "points_per_100": play.points_per_100,
+                        "standard_error": play.standard_error,
+                        "rank": play.rank,
+                    }
+                    for play in ranking.plays
+                ],
+                "bands": [list(band) for band in ranking.bands],
+                "ordered": ranking.ordered,
+                "excluded": list(ranking.excluded),
+                "diagonal_would_refuse": ranking.diagonal_would_refuse,
+                "pairs_compared": ranking.pairs_compared,
+                "ties_spanning_bands": ranking.ties_spanning_bands,
+            }
+        )
+
+    refused = sum(c["diagonal_would_refuse"] for c in cases)
+    compared = sum(c["pairs_compared"] for c in cases)
+    return {
+        "seed": SEED,
+        "zones": list(profiles["zones"]),
+        "term_names": list(model["term_names"]),
+        "ranking": contract,
+        "n_cases": len(cases),
+        # Summary counters, stored so a change in behaviour is one line of a diff
+        # rather than a hundred. Each is a sum over the cases in this file, so
+        # nothing here is a number the fixture cannot itself justify.
+        "n_unordered": sum(1 for c in cases if not c["ordered"]),
+        "n_bands_total": sum(len(c["bands"]) for c in cases),
+        "diagonal_would_refuse": refused,
+        "pairs_compared": compared,
+        # What contiguity costs, summed. If this is zero the constraint is free
+        # on this corpus; if it is not, the number is the honest size of what the
+        # ranked-list rendering gives up.
+        "ties_spanning_bands": sum(c["ties_spanning_bands"] for c in cases),
+        "cases": cases,
+    }
+
+
+def write_plays_parity_fixture(paths: DataPaths) -> Path:
+    fixture = build_plays_parity_fixture(paths)
+    paths.parity.mkdir(parents=True, exist_ok=True)
+    path = paths.parity / "plays.json"
+    path.write_text(
+        json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
+
+
 def check_fixtures(paths: DataPaths) -> list[Drift]:
     """Regenerate both fixtures and report every real disagreement.
 
@@ -327,6 +479,7 @@ def check_fixtures(paths: DataPaths) -> list[Drift]:
     for name, builder, tolerance in (
         ("lineups.json", build_parity_fixture, 0.0),
         ("selection.json", build_selection_parity_fixture, FLOAT_TOLERANCE),
+        ("plays.json", build_plays_parity_fixture, FLOAT_TOLERANCE),
     ):
         path = paths.parity / name
         if not path.exists():

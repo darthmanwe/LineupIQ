@@ -84,6 +84,10 @@ const SCORING_ROUTES: Array<{ path: string; body: (players: number[]) => unknown
     path: "/lineups/score",
     body: (players) => ({ shooter_id: players[0], offense: players, defense: [] }),
   },
+  {
+    path: "/lineups/optimal-plays",
+    body: (players) => ({ shooter_id: players[0], offense: players, defense: [] }),
+  },
 ];
 
 /** Routes that take a lineup but make no claim about it, so support cannot apply. */
@@ -192,6 +196,90 @@ describe("a directional lineup keeps its direction and loses its magnitude", () 
       expect(Math.abs(total)).toBeLessThan(1e-9);
 
       expect(body.meta.warnings.join(" ")).toMatch(/direction/i);
+    }
+  });
+
+  it("/lineups/optimal-plays keeps its ranking and loses its magnitudes", async () => {
+    // The ranking is the one thing that *survives* a directional tier here, and
+    // the distinction is worth stating because it is easy to get backwards.
+    //
+    // A magnitude ("this lineup is worth +2.1 points per 100 at the rim") is a
+    // claim about this five-man group, and below the possession floor there is
+    // no evidence for it. The *ordering* is a claim about the model's own
+    // precision -- whether two coefficient-driven contributions separate at 80%
+    // -- and that comes from 671,251 attempts fitting twenty parameters, not
+    // from this lineup's possessions. So the ranks stay and the numbers go.
+    for (const players of lineups) {
+      const response = await post("/lineups/optimal-plays", {
+        shooter_id: players[0],
+        offense: players,
+        defense: [],
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        data: {
+          plays: Array<{
+            rank: number;
+            points_per_100: number | null;
+            points_direction: string;
+            standard_error: number;
+            interval: [number, number] | null;
+            share: number | null;
+          }>;
+        };
+        meta: { support: { tier: string } };
+      };
+      if (body.meta.support.tier === "reportable") continue;
+
+      expect(body.data.plays.length).toBeGreaterThan(0);
+      for (const play of body.data.plays) {
+        expect(play.points_per_100, `points on ${players.join(",")}`).toBeNull();
+        expect(play.share).toBeNull();
+        // The interval must go too. It is centred on the point estimate, so
+        // serving `[lo, hi]` beside a nulled `points_per_100` would hand the
+        // refused number straight back as `(lo + hi) / 2` -- a refusal that
+        // does not refuse, which is worse than none because it looks correct.
+        expect(play.interval, `interval on ${players.join(",")}`).toBeNull();
+        // What survives: the rank, the direction, and the interval width. None
+        // of those is a magnitude for this lineup.
+        expect(play.rank).toBeGreaterThanOrEqual(1);
+        expect(["gain", "loss", "flat"]).toContain(play.points_direction);
+        expect(Number.isFinite(play.standard_error)).toBe(true);
+      }
+    }
+  });
+
+  it("/lineups/optimal-plays never presents a tie as an ordering", async () => {
+    // Two zones the model cannot separate must carry the same rank, and a
+    // response with `ordered: false` must have exactly one band. Getting either
+    // wrong is precisely the failure this endpoint exists to prevent, and it
+    // would look completely ordinary in the payload.
+    for (const players of lineups) {
+      const response = await post("/lineups/optimal-plays", {
+        shooter_id: players[0],
+        offense: players,
+        defense: [],
+      });
+      const body = (await response.json()) as {
+        data: {
+          ordered: boolean;
+          bands: string[][];
+          plays: Array<{ zone_id: string; rank: number }>;
+        };
+        meta: { warnings: string[] };
+      };
+      const ranks = new Set(body.data.plays.map((p) => p.rank));
+      expect(ranks.size).toBe(body.data.bands.length);
+      if (!body.data.ordered) {
+        expect(body.data.bands).toHaveLength(1);
+        expect(body.meta.warnings.join(" ")).toMatch(/unordered set/i);
+      }
+      body.data.bands.forEach((band, i) => {
+        for (const zone of band) {
+          const play = body.data.plays.find((p) => p.zone_id === zone);
+          expect(play?.rank).toBe(i + 1);
+        }
+      });
     }
   });
 });

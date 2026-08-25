@@ -10,7 +10,15 @@
     "6-8. Below 200 the measurement is noisier than the entire signal, so a point",
     "estimate there is not a weak claim -- it is a meaningless one."
   ],
-  "version": 1,
+  "_ranking_comment": [
+    "ADDED at version 2, for the play-ranking endpoint. No floor above was",
+    "changed -- `test_the_floors_are_the_ones_the_arithmetic_implies` asserts",
+    "every version-1 number by value, so the hash pin and that test together",
+    "distinguish an addition from a loosening. The confidence level below was",
+    "fixed before any ranking was computed, and before it was known whether any",
+    "two zones would separate at all."
+  ],
+  "version": 2,
   "reportable": {
     "lineup_possessions": 200,
     "min_player_attempts": 100
@@ -25,5 +33,9 @@
   },
   "trade": {
     "min_reportable_minutes_share": 0.6
+  },
+  "ranking": {
+    "confidence": 0.8,
+    "min_zone_share": 0.01
   }
 }

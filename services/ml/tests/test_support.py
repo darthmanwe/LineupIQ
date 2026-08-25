@@ -29,7 +29,15 @@ from lineupiq.models.support import (
 #: edited -- in which case the "pre-registered" claim in the README is no longer
 #: true and has to come out -- or the file was reformatted, in which case
 #: reformatting a pre-registered artefact is itself worth a second look.
-PRE_REGISTERED_SHA256 = "c82ee2907151a34887d640fa34cca75bc905f699738461b5e76b7cdf996d088d"
+#:
+#: **Changed once, at version 2**, to add the `ranking` block for
+#: `/lineups/optimal-plays`. That is an addition, not a loosening, and the
+#: difference between those two is the whole value of the pin -- so it is not
+#: left to a commit message. `test_the_floors_are_the_ones_the_arithmetic_implies`
+#: asserts every version-1 number *by value*, so the hash catches any edit and
+#: that test catches the specific edit that would matter. A future diff that
+#: lowers the possession floor and updates this constant still fails.
+PRE_REGISTERED_SHA256 = "75337764f3423013307844aa1a0cb143e202cd14cfc9b629db2083e5951808c1"
 
 
 def test_thresholds_are_pre_registered_and_unchanged() -> None:
@@ -58,6 +66,34 @@ def test_the_floors_are_the_ones_the_arithmetic_implies() -> None:
     # terms, which have orders of magnitude more evidence than any combination.
     assert thresholds.directional_possessions < thresholds.reportable_possessions
     assert thresholds.directional_attempts < thresholds.reportable_attempts
+
+    # Version-1 floors, asserted by value so an "addition" cannot smuggle one
+    # through. Every number below predates any result that depends on it.
+    assert thresholds.reportable_attempts == 100
+    assert thresholds.directional_possessions == 25
+    assert thresholds.directional_attempts == 30
+    assert thresholds.min_zone_attempts == 10
+    assert thresholds.conformal_bin_min_n == 50
+    assert thresholds.min_reportable_minutes_share == 0.6
+
+
+def test_the_ranking_confidence_was_fixed_before_any_ranking_existed() -> None:
+    """80%, and deliberately not 95%.
+
+    This level does not gate whether a number is *shown* -- it gates whether a
+    list is presented as **ordered**. Those are different errors with different
+    costs. Refusing to order two plays that really do differ wastes information
+    the model has; ordering two that do not differ invents information it does
+    not. At nine zones the second is the one that would happen constantly, so
+    the level is set where the plan pre-registered it and no looser.
+
+    Kept in the pinned file rather than as a constant in the ranking module,
+    because a threshold that lives next to the code that wants it loose is a
+    threshold that will get loose.
+    """
+    thresholds = load_thresholds()
+    assert thresholds.ranking_confidence == 0.8
+    assert thresholds.ranking_min_zone_share == 0.01
 
 
 def _table(possessions: int, attempts: int, lineup: list[int]) -> dict[str, tuple[int, int]]:

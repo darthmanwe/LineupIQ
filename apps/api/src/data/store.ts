@@ -67,6 +67,17 @@ export type SelectionModelData = {
   coefficients?: number[];
   /** Null until the served fit has had a covariance computed. */
   standard_errors?: (number | null)[] | null;
+  /**
+   * The full covariance, row-major in `term_names` order — not the diagonal.
+   *
+   * `/lineups/optimal-plays` compares *differences* between priced contributions
+   * that are strongly correlated through the softmax, so `Var(a − b)` is the
+   * quantity it needs and the covariance term is what makes it small. Twenty
+   * standard errors cannot answer that question.
+   */
+  covariance?: number[][] | null;
+  /** The pre-registered ranking level, with its critical value resolved. */
+  ranking?: { confidence: number; critical_value: number; min_zone_share: number } | null;
   observed_mix?: Record<string, number>;
   sign_audit?: Record<
     string,

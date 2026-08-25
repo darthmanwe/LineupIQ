@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import lineupFixtureJson from "../../../data/parity/lineups.json";
 import coverageJson from "../../web/public/data/coverage.json";
 import evaluationJson from "../../web/public/data/evaluation.json";
 import playerZonesJson from "../../web/public/data/player_zones.json";
@@ -70,6 +71,24 @@ async function post(path: string, body: unknown): Promise<Response> {
 }
 
 /** Five players certain to have real evidence: the highest-volume ones. */
+/**
+ * A five-man group that actually cleared the reportable possession floor.
+ *
+ * Not "the five highest-volume shooters" -- those five have never shared a
+ * floor, so that lineup is `directional` and every magnitude comes back null.
+ * Only 487 of 49,827 observed groups clear 200 possessions, which is the
+ * estimability finding the whole refusal contract exists for; a test that wants
+ * to see a number has to go and find one of them.
+ */
+function reportableLineup(): number[] {
+  const fixture = lineupFixtureJson as unknown as {
+    cases: Array<{ players: number[]; tier: string }>;
+  };
+  const found = fixture.cases.find((c) => c.tier === "reportable");
+  if (found === undefined) throw new Error("no reportable lineup in the parity fixture");
+  return found.players;
+}
+
 function highVolumePlayers(count: number): number[] {
   const players = playersJson as unknown as {
     players: Record<string, { attempts: number }>;
@@ -319,6 +338,127 @@ describe("scoring a counterfactual lineup", () => {
   it("rejects a four-man offence", async () => {
     const four = highVolumePlayers(4);
     const response = await post("/api/lineups/score", { shooter_id: four[0], offense: four });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("ranking the plays a lineup creates", () => {
+  it("decomposes the priced shift, and the parts add back to the whole", async () => {
+    const five = reportableLineup();
+    const defence = highVolumePlayers(10).slice(5);
+    const body = {
+      shooter_id: five[0],
+      offense: five,
+      defense: defence,
+    };
+
+    const [ranked, scored] = await Promise.all([
+      post("/api/lineups/optimal-plays", body),
+      post("/api/lineups/score", body),
+    ]);
+    expect(ranked.status).toBe(200);
+    expect(scored.status).toBe(200);
+
+    const ranking = (await ranked.json()) as {
+      data: {
+        ordered: boolean;
+        confidence: number;
+        plays: Array<{
+          zone_id: string;
+          rank: number;
+          points_per_100: number | null;
+          standard_error: number;
+          interval: [number, number];
+        }>;
+        bands: string[][];
+        excluded_zones: string[];
+      };
+      meta: {
+        support: { tier: string };
+        ranking: {
+          pairs_compared: number;
+          diagonal_would_refuse: number;
+          critical_value: number;
+          parity_fixture: string;
+        };
+      };
+    };
+    const score = (await scored.json()) as { data: { points_per_100: number | null } };
+
+    expect(ranking.meta.support.tier).toBe("reportable");
+    expect(ranking.meta.ranking.parity_fixture).toBe("data/parity/plays.json");
+    expect(ranking.data.confidence).toBe(0.8);
+
+    // This endpoint is a decomposition, not a second model. If the parts stopped
+    // summing to the headline, one of the two numbers would be wrong and a
+    // reader looking at either page alone would never find out.
+    const parts = ranking.data.plays.reduce((a, p) => a + (p.points_per_100 ?? 0), 0);
+    const whole = score.data.points_per_100 as number;
+    expect(ranking.data.excluded_zones).toEqual([]);
+    expect(Math.abs(parts - whole)).toBeLessThan(1e-9);
+  });
+
+  it("publishes what the covariance bought, per request", async () => {
+    // The response carries the count of pairs a marginal-interval-overlap test
+    // would have refused to rank. That is the justification for shipping a 20x20
+    // matrix to the edge rather than its diagonal, and it belongs where a caller
+    // can check it rather than in a comment in the repository.
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/optimal-plays", {
+      shooter_id: five[0],
+      offense: five,
+      defense: highVolumePlayers(10).slice(5),
+    });
+    const body = (await response.json()) as {
+      meta: {
+        ranking: { pairs_compared: number; diagonal_would_refuse: number; critical_value: number };
+      };
+    };
+    expect(body.meta.ranking.pairs_compared).toBeGreaterThan(0);
+    expect(body.meta.ranking.diagonal_would_refuse).toBeGreaterThanOrEqual(0);
+    expect(body.meta.ranking.critical_value).toBeCloseTo(1.2815515655, 9);
+  });
+
+  it("gives tied zones the same rank and says so in a warning", async () => {
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/optimal-plays", {
+      shooter_id: five[0],
+      offense: five,
+      defense: highVolumePlayers(10).slice(5),
+    });
+    const body = (await response.json()) as {
+      data: {
+        ordered: boolean;
+        bands: string[][];
+        plays: Array<{ zone_id: string; rank: number }>;
+      };
+      meta: { warnings: string[] };
+    };
+
+    // Ranks are 1..bands.length with no gaps: a rank that skipped a number would
+    // mean a band existed with nothing in it.
+    const ranks = body.data.plays.map((p) => p.rank);
+    expect(new Set(ranks).size).toBe(body.data.bands.length);
+    expect(Math.max(...ranks)).toBe(body.data.bands.length);
+
+    // And the ranks never decrease down the list. That property is what makes
+    // the array renderable as a ranking at all; the first version of the banding
+    // produced sequences like 1, 2, 2, 1 and the parity fixture caught it.
+    for (let i = 1; i < ranks.length; i += 1) {
+      expect(ranks[i]).toBeGreaterThanOrEqual(ranks[i - 1] as number);
+    }
+
+    if (body.data.bands.some((band) => band.length > 1)) {
+      expect(body.meta.warnings.join(" ")).toMatch(/share a rank/i);
+    }
+  });
+
+  it("rejects a four-man offence", async () => {
+    const four = highVolumePlayers(4);
+    const response = await post("/api/lineups/optimal-plays", {
+      shooter_id: four[0],
+      offense: four,
+    });
     expect(response.status).toBe(400);
   });
 });

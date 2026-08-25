@@ -556,6 +556,130 @@ def _selection_priced(ctx: RenderContext) -> str:
     return "\n".join(out)
 
 
+#: Lineups drawn to measure how often the ranking refuses. Seeded, so the table
+#: reproduces; large enough that the "refuses to order at all" rate -- which is a
+#: few per cent -- is stable to a tenth of a point.
+_RANKING_SAMPLE = 2_000
+
+
+def _selection_ranking(ctx: RenderContext) -> str:
+    """How often the ranking declines to rank, and what the covariance bought.
+
+    Both numbers exist because a ranked list is a claim. Nine zones sorted by
+    contribution *reads as* nine ordered facts, and at an effect this small most
+    of those orderings are not supported -- so the mechanism has to be able to
+    say "these two are tied", and the rate at which it does is the evidence that
+    the mechanism is doing anything at all.
+
+    The second number is the design justification. The obvious separation test
+    asks whether two marginal intervals overlap; the correct one asks whether
+    the *difference* is distinguishable from zero, which needs the off-diagonal
+    covariance. If the two tests always agreed, the twenty standard errors would
+    do and the 20x20 matrix would be dead weight. They do not agree, and the gap
+    is measured here rather than asserted.
+    """
+    import json as _json
+
+    import numpy as _np
+
+    from lineupiq.config import SEED
+    from lineupiq.serve.plays import rank_plays
+    from lineupiq.serve.score import ScoreRequest
+
+    data = ctx.paths.root / "apps" / "web" / "public" / "data"
+    profiles_path = data / "selection_profiles.json"
+    model_path = data / "selection_model.json"
+    if not profiles_path.exists() or not model_path.exists():
+        return "\n_No served model exported. Run `lineupiq export` first._\n"
+
+    profiles = _json.loads(profiles_path.read_text(encoding="utf-8"))
+    model = _json.loads(model_path.read_text(encoding="utf-8"))
+    if not model.get("available") or model.get("covariance") is None:
+        return "\n_The committed selection run log carries no covariance matrix._\n"
+
+    contract = model["ranking"]
+    known = sorted(int(k) for k in profiles["shooter_log_ratio"])
+    rng = _np.random.default_rng(SEED)
+
+    bands: list[int] = []
+    ranked: list[int] = []
+    unordered = 0
+    any_tie = 0
+    tied_groups = 0
+    excluded = 0
+    refused = 0
+    compared = 0
+    spanning = 0
+    for _ in range(_RANKING_SAMPLE):
+        offence = [known[j] for j in rng.choice(len(known), 5, replace=False)]
+        defence = [known[j] for j in rng.choice(len(known), 5, replace=False)]
+        ranking = rank_plays(
+            ScoreRequest(offence[0], tuple(offence), tuple(defence)),
+            profiles,
+            model,
+            confidence=contract["confidence"],
+            critical_value=contract["critical_value"],
+            min_zone_share=contract["min_zone_share"],
+        )
+        bands.append(len(ranking.bands))
+        ranked.append(len(ranking.plays))
+        unordered += 0 if ranking.ordered else 1
+        # A tie is a band with more than one member. **Not** `len(bands) < 9`:
+        # a ranking can have fewer bands than zones because the share floor
+        # excluded one, which is a different fact with a different cause, and
+        # the first version of this table conflated the two -- it reported 91%
+        # of rankings containing a tie beside a mean of 0.39 tied groups per
+        # ranking, which cannot both be true.
+        groups = sum(1 for band in ranking.bands if len(band) > 1)
+        any_tie += 1 if groups else 0
+        tied_groups += groups
+        excluded += len(ranking.excluded)
+        refused += ranking.diagonal_would_refuse
+        compared += ranking.pairs_compared
+        spanning += ranking.ties_spanning_bands
+
+    n_zones = len(profiles["zones"])
+    level = contract["confidence"]
+    out = [
+        "",
+        f"**How often the ranking declines to rank**, over {_RANKING_SAMPLE:,} random "
+        f"five-man lineups at the pre-registered {level:.0%} level:",
+        "",
+        "| | |",
+        "|---|---|",
+        f"| Zones ranked, mean | {_np.mean(ranked):.2f} of {n_zones} |",
+        f"| Zones below the share floor, mean | {excluded / _RANKING_SAMPLE:.2f} |",
+        f"| Distinct ranks, mean | {_np.mean(bands):.2f} |",
+        f"| Rankings containing a tie | {any_tie / _RANKING_SAMPLE:.1%} |",
+        f"| Tied groups per ranking, mean | {tied_groups / _RANKING_SAMPLE:.2f} |",
+        f"| Rankings with no supported order at all | {unordered / _RANKING_SAMPLE:.1%} |",
+        "",
+        f"So a typical lineup separates into {_np.mean(bands):.1f} distinct ranks over "
+        f"{_np.mean(ranked):.1f} ranked zones, {any_tie / _RANKING_SAMPLE:.0%} of rankings "
+        f"contain at least one tie, and on {unordered / _RANKING_SAMPLE:.1%} of them nothing "
+        "separates from anything. Those last are served as unordered sets with a warning "
+        "saying so, not as lists whose order happens to carry no information.",
+        "",
+        "**What the covariance bought.** The obvious test asks whether two zones' intervals "
+        "overlap. That test is wrong: shares come out of a softmax and sum to one, so two "
+        "contributions are strongly negatively correlated and `Var(a - b)` is far smaller "
+        f"than `Var(a) + Var(b)`. Of {compared:,} ranked pairs, "
+        f"**{refused:,} ({refused / compared:.1%}) separate on the difference and would have "
+        "been called indistinguishable by comparing marginal intervals** -- pairs the model "
+        "really can order, that the cheaper test would have refused. That is why a 20x20 "
+        "matrix ships to the edge instead of its diagonal.",
+        "",
+        "The bands are contiguous runs of the ranked list, which is what makes `rank` "
+        "monotone in list position. That constraint is not free: "
+        f"{spanning:,} of {compared:,} pairs ({spanning / compared:.2%}) are "
+        "indistinguishable and still landed in different bands, because they were not "
+        "adjacent enough to share a run. Small, but not zero, and counted rather than "
+        "waved at.",
+        "",
+    ]
+    return "\n".join(out)
+
+
 def _rapm(ctx: RenderContext) -> str:
     """RAPM, and the reliability number that decides whether to believe it."""
     run = _read_json(ctx.paths.runs / "rapm" / "run.json")
@@ -877,6 +1001,7 @@ RENDERERS = {
     "results.model": _model_results,
     "results.selection": _selection_results,
     "results.selection_priced": _selection_priced,
+    "results.selection_ranking": _selection_ranking,
     "results.rapm": _rapm,
     "results.trade": _trade,
     "results.retrieval": _retrieval,

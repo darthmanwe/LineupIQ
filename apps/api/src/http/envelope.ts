@@ -62,6 +62,32 @@ export type Meta = {
    * training run produced the numbers it used".
    */
   scoring?: { closed_form_version: string; parity_fixture: string; git_sha?: string | null };
+  /**
+   * How a ranked response decided what it was allowed to order.
+   *
+   * Separate from `support`, because they answer different questions and
+   * conflating them is the mistake this block exists to prevent. `support` is
+   * about *this lineup's* evidence: how many possessions these five have played,
+   * and therefore whether a magnitude may be shown at all. This is about the
+   * *model's* precision: whether two priced contributions separate at the
+   * pre-registered level, which comes from the fit and not from the lineup. A
+   * lineup can be below the possession floor -- no magnitudes -- and still have a
+   * perfectly well-determined ordering, and that combination is the normal case.
+   *
+   * `diagonal_would_refuse` is published rather than kept internal because it is
+   * the justification for shipping a 20x20 covariance to the edge instead of its
+   * diagonal: it counts the pairs a marginal-interval-overlap test would have
+   * declined to rank, on this request.
+   */
+  ranking?: {
+    pairs_compared: number;
+    diagonal_would_refuse: number;
+    ties_spanning_bands: number;
+    critical_value: number;
+    method: string;
+    parity_fixture: string;
+    git_sha?: string | null;
+  };
   warnings: string[];
 };
 
@@ -83,6 +109,7 @@ export function envelope<T>(
       ...(extra.model ? { model: extra.model } : {}),
       ...(extra.support ? { support: extra.support } : {}),
       ...(extra.scoring ? { scoring: extra.scoring } : {}),
+      ...(extra.ranking ? { ranking: extra.ranking } : {}),
     },
   };
 }

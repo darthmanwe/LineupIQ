@@ -659,6 +659,14 @@ class ConditionalLogit:
     final_loss: float = float("nan")
     #: Filled by :meth:`compute_standard_errors`, on the served fit only.
     standard_errors: np.ndarray | None = None
+    #: The full covariance, not just its diagonal. Kept because the diagonal is
+    #: the wrong tool for the question the ranking endpoint asks. Two zones'
+    #: priced contributions are strongly correlated through the softmax -- share
+    #: has to come from somewhere -- so ``Var(a - b)`` is much smaller than
+    #: ``Var(a) + Var(b)``, and deciding whether they are distinguishable from
+    #: marginal intervals alone would refuse to rank options that are in fact
+    #: separable. Storing 400 numbers instead of 20 buys that.
+    covariance: np.ndarray | None = None
 
     def objective(
         self,
@@ -778,7 +786,13 @@ class ConditionalLogit:
         eighteen times per pass, and none of those fits needs a covariance
         matrix -- only the coefficients that actually get served do.
         """
-        variances = np.diag(self.coefficient_covariance(design))
+        # Computed once and kept whole. The diagonal answers "is this coefficient
+        # signed"; the off-diagonal answers "is this zone's contribution bigger
+        # than that one's", and the second question needs the covariance of a
+        # *difference*. Recomputing the Hessian for that would be forty more
+        # design evaluations for numbers already in hand.
+        self.covariance = self.coefficient_covariance(design)
+        variances = np.diag(self.covariance)
         # A negative variance means the sandwich came out indefinite, which is a
         # real signal about a flat direction in the likelihood. Taking an
         # absolute value would launder it into a small, confident-looking
@@ -859,6 +873,16 @@ class ConditionalLogit:
                 None
                 if self.standard_errors is None
                 else [None if not np.isfinite(v) else float(v) for v in self.standard_errors]
+            ),
+            # Row-major, term order identical to `term_names`. Written as nested
+            # lists rather than a flat array with a stated stride: a flat array
+            # is one transposition away from silently describing a different
+            # model, and the transposed version of a symmetric-ish matrix passes
+            # every smoke test you would think to write.
+            "covariance": (
+                None
+                if self.covariance is None
+                else [[float(v) for v in row] for row in self.covariance]
             ),
             "sign_audit": self.sign_audit(),
         }

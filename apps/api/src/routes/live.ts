@@ -23,6 +23,7 @@ import { MissingAsset } from "../data/store";
 import { envelope } from "../http/envelope";
 import { insufficientSupport, problem } from "../http/problem";
 import { assessSupport, whatWouldHelp } from "../scoring/support";
+import { rankPlays } from "../scoring/plays";
 import { scoreSelection } from "../scoring/selection";
 import { LINEUP_SIZE, lineupHash } from "../scoring/lineupHash";
 import type { Bindings } from "../index";
@@ -482,6 +483,225 @@ export function mountLive(app: App): void {
             scoring: {
               closed_form_version: "selection-conditional-logit-v1",
               parity_fixture: "data/parity/selection.json",
+              git_sha: model.git_sha ?? null,
+            },
+            warnings,
+          }
+        )
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * The ranked plays for one lineup - and an explicit refusal to rank where it
+   * cannot.
+   *
+   * This is a decomposition of a number `/lineups/score` already publishes: the
+   * priced shot-mix shift, split by zone. Sorting nine numbers is trivial. What
+   * took the work is that a sorted list *reads as* a claim that the first beats
+   * the second, and at this effect size - the whole shift is about 0.19 points
+   * per 100 in standard deviation, spread over nine zones - that claim is often
+   * not supported.
+   *
+   * So every pair is tested, and the test is on the **difference**, not on
+   * whether two marginal intervals overlap. Zone shares come out of a softmax
+   * and sum to one, so two contributions are strongly negatively correlated and
+   * `Var(a - b)` is far smaller than `Var(a) + Var(b)`. The overlap test drops
+   * that term and refuses to rank pairs that separate decisively.
+   * `diagonal_would_refuse` in the response counts, for this request, how many
+   * pairs that shortcut would have given up on - so the justification for
+   * shipping a 20x20 matrix to the edge is a number the caller can see.
+   *
+   * Zones the data cannot separate share a rank. When *no* zone separates from
+   * any other, `ordered` is false and the response says the set is unordered
+   * rather than implying an order through list position.
+   */
+  app.post("/lineups/optimal-plays", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return problem(c, {
+        status: 400,
+        code: "MALFORMED_BODY",
+        title: "Body is not JSON",
+        detail:
+          "Send the same body `/lineups/score` takes: " +
+          '{"shooter_id": id, "offense": [5 ids], "defense": [5 ids]}.',
+      });
+    }
+
+    const request = parseScoreRequest(body);
+    if ("error" in request) {
+      return problem(c, {
+        status: 400,
+        code: "INVALID_REQUEST",
+        title: "Invalid scoring request",
+        detail: request.error,
+      });
+    }
+
+    try {
+      const [model, profiles, support, players] = await Promise.all([
+        loadSelectionModel(c.env),
+        loadSelectionProfiles(c.env),
+        loadSupport(c.env),
+        loadPlayers(c.env),
+      ]);
+
+      if (!model.available || !model.term_names || !model.coefficients) {
+        return problem(c, {
+          status: 503,
+          code: "MODEL_NOT_FITTED",
+          title: "The selection model has not been fitted",
+          detail: model.reason ?? "No selection run log is committed.",
+        });
+      }
+      if (!model.covariance || !model.ranking) {
+        // Not a 500. The model is fitted and `/lineups/score` works; what is
+        // missing is the covariance this endpoint needs in order to know whether
+        // the ranking means anything. Serving the order without it would be
+        // serving the exact claim the endpoint exists to qualify.
+        return problem(c, {
+          status: 503,
+          code: "NO_COVARIANCE",
+          title: "The served model has no covariance matrix",
+          detail:
+            "Ranking requires the standard error of a *difference* between two " +
+            "priced contributions, which needs the full covariance. Re-run " +
+            "`lineupiq selection` and `lineupiq export`.",
+        });
+      }
+
+      const assessment = assessSupport(request.offense, support, players);
+      if (assessment.tier === "refused") {
+        return insufficientSupport(c, {
+          detail:
+            "These five players do not have enough recorded evidence to rank how they " +
+            "change this shooter's shot selection.",
+          nPossessions: assessment.possessions,
+          threshold: assessment.thresholds.possessions,
+          shortfallPlayers: assessment.shortfallPlayers,
+          whatWouldHelp: whatWouldHelp(assessment),
+        });
+      }
+
+      const ranking = rankPlays(
+        {
+          shooterId: request.shooterId,
+          offense: request.offense,
+          defense: request.defense,
+          teamId: request.teamId,
+          season: request.season,
+          secondsIntoPossession: request.secondsIntoPossession,
+          liveBall: request.liveBall,
+          secondChance: request.secondChance,
+          clutch: request.clutch,
+        },
+        profiles,
+        {
+          available: true,
+          term_names: model.term_names,
+          coefficients: model.coefficients,
+          covariance: model.covariance,
+          ranking: model.ranking,
+        },
+        model.ranking
+      );
+
+      const warnings: string[] = [];
+      if (!ranking.ordered) {
+        warnings.push(
+          "No two zones separate at the pre-registered confidence level. This is an " +
+            "unordered set, not a ranking - the list order carries no information."
+        );
+      }
+      if (ranking.bands.some((band) => band.length > 1)) {
+        const tied = ranking.bands.filter((band) => band.length > 1).length;
+        warnings.push(
+          `${tied} group${tied === 1 ? "" : "s"} of zones share a rank because the data ` +
+            "cannot order them. Zones with the same `rank` are tied, not sequenced."
+        );
+      }
+      if (assessment.tier === "directional") {
+        warnings.push(
+          "This five-man combination is below the reportable possession floor. The " +
+            "ordering is supported; the magnitudes are not, and are nulled."
+        );
+      }
+      if (assessment.counterfactual) {
+        warnings.push("These five have never shared the floor in this snapshot.");
+      }
+      if (ranking.excluded.length > 0) {
+        const floor = (model.ranking.min_zone_share * 100).toFixed(0);
+        warnings.push(
+          `${ranking.excluded.length} zone(s) are below the ${floor}% share floor and ` +
+            `were not ranked: ${ranking.excluded.join(", ")}.`
+        );
+      }
+
+      const reportable = assessment.tier === "reportable";
+      return c.json(
+        envelope(
+          c,
+          {
+            lineup_hash: assessment.lineupHash,
+            shooter: {
+              player_id: String(request.shooterId),
+              name: players.players[String(request.shooterId)]?.name ?? null,
+            },
+            // Whether the list is a ranking at all. A caller that rendered the
+            // array without reading this would be inventing an order.
+            ordered: ranking.ordered,
+            confidence: ranking.confidence,
+            plays: ranking.plays.map((play) => ({
+              zone_id: play.zone,
+              rank: play.rank,
+              // Nulled below the reportable floor exactly as `/lineups/score`
+              // nulls its headline. The *rank* survives, because the pairwise
+              // test that produced it is about the model's own precision and
+              // does not depend on this lineup's possession count.
+              points_per_100: reportable ? play.pointsPer100 : null,
+              points_direction:
+                play.pointsPer100 > 0 ? "gain" : play.pointsPer100 < 0 ? "loss" : "flat",
+              // The width survives a directional tier; the endpoints do not.
+              //
+              // An interval is centred on the point estimate, so shipping
+              // `[lo, hi]` while nulling `points_per_100` would hand back the
+              // refused number as `(lo + hi) / 2`. That is a refusal that does
+              // not refuse, which is worse than no refusal at all -- it looks
+              // like the contract is being honoured. The width is a statement
+              // about the model's precision rather than about this lineup's
+              // effect, so it stays.
+              standard_error: play.standardError,
+              interval: reportable ? play.interval : null,
+              share: reportable ? play.share : null,
+              baseline_share: play.baselineShare,
+            })),
+            // The bands, spelled out, so a client does not have to reconstruct
+            // ties by grouping on `rank`.
+            bands: ranking.bands,
+            excluded_zones: ranking.excluded,
+          },
+          {
+            snapshot: c.env.SNAPSHOT ?? null,
+            support: {
+              lineup_possessions: assessment.possessions,
+              min_player_attempts: assessment.minPlayerAttempts,
+              tier: assessment.tier,
+              counterfactual: assessment.counterfactual,
+              thresholds: assessment.thresholds,
+            },
+            ranking: {
+              // The measurement behind the design decision, per request.
+              pairs_compared: ranking.pairsCompared,
+              diagonal_would_refuse: ranking.diagonalWouldRefuse,
+              ties_spanning_bands: ranking.tiesSpanningBands,
+              critical_value: ranking.criticalValue,
+              method: "delta method on the ridge sandwich; contiguous single-linkage bands",
+              parity_fixture: "data/parity/plays.json",
               git_sha: model.git_sha ?? null,
             },
             warnings,

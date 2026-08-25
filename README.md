@@ -300,10 +300,10 @@ fitted**. The audit below reports how many came out that way, and it is not a cl
 | Model | Log loss (9-way) | Top-1 | 3PA log loss | 3PA resolution | Verdict |
 |---|---|---|---|---|---|
 | S0 - league zone mix | 1.79948 | 0.2939 | 0.67106 | 0.00036 |  |
-| S1 - shooter's own shrunk mix (lookup table) | 1.65907 | 0.3701 | 0.59577 | 0.03092 |  |
+| S1 - shooter's own shrunk mix (lookup table) | 1.65907 | 0.3701 | 0.59577 | 0.03093 |  |
 | S2 - conditional logit, no lineup | 1.65248 | 0.3712 | 0.59472 | 0.03140 |  |
 | S3 - multiclass GBDT, no lineup | 1.61532 | 0.3951 | 0.58345 | 0.03597 |  |
-| **full - conditional logit + lineup (served)** | 1.65113 | 0.3718 | 0.59360 | 0.03185 | +0.082% vs S2 |
+| **full - conditional logit + lineup (served)** | 1.65113 | 0.3718 | 0.59360 | 0.03184 | +0.082% vs S2 |
 | **full - GBDT + lineup (unconstrained)** | 1.61400 | 0.3954 | 0.58342 | 0.03596 | +0.082% vs S3 |
 
 **Walk-forward -- later games** -- n = 403,797 attempts
@@ -334,8 +334,8 @@ right estimator for a penalised fit and the same one RAPM uses.
 |---|---|---|---|---|---|---|
 | `into_possession_x_rim` | -0.3691 | 0.0048 | -0.3785 to -0.3597 | - | agrees |  |
 | `live_ball_x_rim` | +0.0871 | 0.0062 | +0.0749 to +0.0992 | + | agrees |  |
-| `opp_rim_allowed_x_rim` | +1.4821 | 0.0468 | +1.3904 to +1.5739 | + | agrees | yes |
-| `opp_three_allowed_x_three` | +1.7604 | 0.0531 | +1.6564 to +1.8645 | + | agrees | yes |
+| `opp_rim_allowed_x_rim` | +1.4822 | 0.0468 | +1.3905 to +1.5740 | + | agrees | yes |
+| `opp_three_allowed_x_three` | +1.7604 | 0.0531 | +1.6563 to +1.8644 | + | agrees | yes |
 | `second_chance_x_rim` | +0.2529 | 0.0063 | +0.2406 to +0.2653 | + | agrees |  |
 | `shooter_mix` | +0.9958 | 0.0028 | +0.9903 to +1.0014 | + | agrees |  |
 | `spacing_min_x_three` | +0.0968 | 0.0243 | +0.0491 to +0.1444 | + | agrees | yes |
@@ -352,15 +352,13 @@ spacing than he usually has.
 
 | Term | Headline | Within shooter |
 |---|---|---|
-| `opp_rim_allowed_x_rim` | +1.4821 | +1.4826 |
-| `opp_three_allowed_x_three` | +1.7604 | +1.7941 |
+| `opp_rim_allowed_x_rim` | +1.4822 | +1.4826 |
+| `opp_three_allowed_x_three` | +1.7604 | +1.7942 |
 | `spacing_min_x_three` | +0.0968 | +0.0615 |
 | `spacing_x_three` | -0.4740 | -0.4470 |
 | `teammate_rim_x_rim` | -0.6780 | -0.7114 |
 
-**Negative control.** With the five-man lineups randomly reassigned across attempts, the full model's log-loss gain over S2 is -0.000015 and the `spacing_x_three` coefficient collapses to -0.0169. The second number is the one worth having: a pooled metric can go flat while a coefficient stays large, and this model's claim is directional, so the coefficient is what has to die under shuffling.
-
-_Generated from run `f4878f2` on Linux, seed 20260815, 671,251 attempts across 3 seasons._
+_Generated from run `b0a286e` on Windows, seed 20260815, 671,251 attempts across 3 seasons._
 <!-- lineupiq:end id=results.selection -->
 
 ### What the effect is worth
@@ -411,6 +409,71 @@ evidence the shot went in. Shots that end their possession convert at **93.3%** 
 **1.3%** for shots that do not. Both columns are attached for reporting and both are listed
 in `FORBIDDEN_FEATURES`; the design matrix is narrowed to a whitelist before anything is
 computed, so they cannot be read by accident rather than merely by discipline.
+
+### Ranking the zones, and refusing to
+
+`/lineups/optimal-plays` decomposes that priced shift by zone and ranks it. The arithmetic is
+trivial — it is the same nine numbers, sorted. What is not trivial is that **a sorted list
+reads as a claim that the first beats the second**, and at an effect this size most of those
+claims are not supported.
+
+So every pair is tested before the list is presented as an ordering, and the test is on the
+**difference**, not on whether two intervals overlap. That distinction is the whole reason a
+20×20 covariance matrix ships to the edge instead of twenty standard errors. Shares come out
+of a softmax and sum to one, so share appearing at the rim came from somewhere else: two
+contributions are strongly *negatively* correlated, and
+
+```
+Var(a − b) = Var(a) + Var(b) − 2·Cov(a, b)
+```
+
+With a large negative covariance the difference is far better determined than either endpoint.
+Comparing marginal intervals drops that term and refuses to rank pairs the model can order
+perfectly well — an error in the direction that looks careful, which is the kind worth
+catching.
+
+The variances come from the delta method over the ridge sandwich, with the gradient taken by
+central differences **on the served scorer itself**. A hand-derived gradient would be a second
+implementation of the model, and one that fails silently: nothing raises, the intervals are
+just the wrong width. Both languages difference their own scorer, so
+[`data/parity/plays.json`](data/parity/plays.json) checks two implementations rather than two
+transcriptions of one formula — and it asserts the standard errors, not only the ranks,
+because a ranking is a sequence of comparisons and comparisons survive exactly the error a
+variance calculation makes.
+
+<!-- lineupiq:begin id=results.selection_ranking -->
+**How often the ranking declines to rank**, over 2,000 random five-man lineups at the pre-registered 80% level:
+
+| | |
+|---|---|
+| Zones ranked, mean | 7.54 of 9 |
+| Zones below the share floor, mean | 1.46 |
+| Distinct ranks, mean | 6.68 |
+| Rankings containing a tie | 36.0% |
+| Tied groups per ranking, mean | 0.39 |
+| Rankings with no supported order at all | 3.2% |
+
+So a typical lineup separates into 6.7 distinct ranks over 7.5 ranked zones, 36% of rankings contain at least one tie, and on 3.2% of them nothing separates from anything. Those last are served as unordered sets with a warning saying so, not as lists whose order happens to carry no information.
+
+**What the covariance bought.** The obvious test asks whether two zones' intervals overlap. That test is wrong: shares come out of a softmax and sum to one, so two contributions are strongly negatively correlated and `Var(a - b)` is far smaller than `Var(a) + Var(b)`. Of 50,960 ranked pairs, **3,775 (7.4%) separate on the difference and would have been called indistinguishable by comparing marginal intervals** -- pairs the model really can order, that the cheaper test would have refused. That is why a 20x20 matrix ships to the edge instead of its diagonal.
+
+The bands are contiguous runs of the ranked list, which is what makes `rank` monotone in list position. That constraint is not free: 270 of 50,960 pairs (0.53%) are indistinguishable and still landed in different bands, because they were not adjacent enough to share a run. Small, but not zero, and counted rather than waved at.
+<!-- lineupiq:end id=results.selection_ranking -->
+
+The confidence level is **pre-registered in the hash-pinned thresholds file**, not chosen here.
+It is 80% rather than 95% on purpose: this level does not gate whether a number is *shown* —
+that is the possession floor's job — it gates whether a list is presented as **ordered**.
+Refusing to order two plays that genuinely differ wastes information the model has; ordering
+two that do not differ invents information it does not. At nine zones the second would happen
+constantly.
+
+One consequence is worth stating because it inverts the usual reading. A lineup below the
+reportable possession floor gets **no magnitudes and keeps its ranks**. The magnitude is a
+claim about those five players, and below the floor there is no evidence for it. The ordering
+is a claim about the *model's* precision — whether two coefficient-driven contributions
+separate — and that comes from 671,251 attempts fitting twenty parameters, not from this
+lineup's possessions. The interval is nulled along with the point estimate, since an interval
+hands the refused number back as its own midpoint.
 
 ## RAPM: the additive player model
 

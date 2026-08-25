@@ -51,6 +51,14 @@ class SupportThresholds:
     min_zone_attempts: int
     conformal_bin_min_n: int
     min_reportable_minutes_share: float
+    #: Confidence level at which two ranked plays must separate before the
+    #: ranking is served as an ordering rather than as an unordered set.
+    ranking_confidence: float
+    #: Zones below this predicted share are not ranked at all. A zone the
+    #: model says is taken once every two hundred attempts has a contribution
+    #: near zero by construction, and including it would fill the tail of
+    #: every ranking with noise that happens to be ordered.
+    ranking_min_zone_share: float
 
 
 @lru_cache(maxsize=1)
@@ -68,6 +76,8 @@ def load_thresholds(path: Path | None = None) -> SupportThresholds:
         min_zone_attempts=raw["shot_model"]["min_zone_attempts_for_point_estimate"],
         conformal_bin_min_n=raw["shot_model"]["conformal_bin_min_n"],
         min_reportable_minutes_share=raw["trade"]["min_reportable_minutes_share"],
+        ranking_confidence=raw["ranking"]["confidence"],
+        ranking_min_zone_share=raw["ranking"]["min_zone_share"],
     )
 
 

@@ -1014,6 +1014,7 @@ def parity(
         FLOAT_TOLERANCE,
         check_fixtures,
         write_parity_fixture,
+        write_plays_parity_fixture,
         write_selection_parity_fixture,
     )
 
@@ -1029,7 +1030,7 @@ def parity(
                 console.print(f"  … and {len(drifts) - 20} more")
             raise typer.Exit(code=1)
         console.print(
-            f"[green]Both fixtures reproduce.[/] [dim]Hashes and tiers exactly; "
+            f"[green]All three fixtures reproduce.[/] [dim]Hashes and tiers exactly; "
             f"floats to {FLOAT_TOLERANCE:g}.[/]"
         )
         return
@@ -1070,6 +1071,42 @@ def parity(
             "[yellow]No unseen shooter in the sample.[/] The league-mix fallback is "
             "the branch most likely to differ between the two languages, and an "
             "all-known sample cannot prove it agrees."
+        )
+
+    # The ranking's own fixture. It adds the delta method, the difference test
+    # and the banding on top of the scorer, and its ranks alone would be a weak
+    # check -- two implementations can agree on an order while disagreeing about
+    # the intervals by a factor of two, because a ranking is a sequence of
+    # comparisons and comparisons survive exactly the error a variance
+    # calculation makes. So the standard errors go in the file too.
+    plays_path = write_plays_parity_fixture(paths)
+    plays = _json.loads(plays_path.read_text(encoding="utf-8"))
+    ranking = Table(title="Play ranking parity", header_style="bold")
+    ranking.add_column("")
+    ranking.add_column("Value", justify="right")
+    ranking.add_row("Cases", f"{plays['n_cases']:,}")
+    ranking.add_row("Confidence", f"{plays['ranking']['confidence']:.0%}")
+    ranking.add_row(
+        "Mean bands (of 9 zones)", f"{plays['n_bands_total'] / max(plays['n_cases'], 1):.2f}"
+    )
+    ranking.add_row("Refuse to order at all", f"{plays['n_unordered']:,}")
+    ranking.add_row(
+        "Pairs the diagonal would refuse",
+        f"{plays['diagonal_would_refuse']:,} / {plays['pairs_compared']:,}",
+    )
+    console.print(ranking)
+    console.print(f"wrote [cyan]{plays_path}[/]")
+    if plays["n_unordered"] == 0:
+        console.print(
+            "[yellow]Every ranking in the sample came out ordered.[/] The unordered "
+            "band is the entire point of this endpoint, and a fixture that never "
+            "produces one cannot prove the two languages agree about it."
+        )
+    if plays["diagonal_would_refuse"] == 0:
+        console.print(
+            "[yellow]The marginal intervals would have reached the same verdict on "
+            "every pair.[/] That is the argument for shipping a 20x20 covariance "
+            "rather than 20 standard errors, and here it did not pay for itself."
         )
 
 

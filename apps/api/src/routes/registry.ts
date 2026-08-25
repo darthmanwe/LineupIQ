@@ -133,28 +133,15 @@ export const ROUTES: readonly RouteSpec[] = [
   {
     method: "POST",
     path: "/lineups/optimal-plays",
-    summary: "Top-k actions ranked by their priced contribution.",
-    state: "planned",
-    // What is still missing is specific, and it is not the hard part. The
-    // coefficients now carry standard errors, so the overlap threshold can be
-    // derived rather than chosen -- which was the blocker. What remains is
-    // propagating that uncertainty through to a *per-zone* interval, and a
-    // zone's priced contribution is a softmax difference times a constant, so
-    // it needs the delta method over the full 20x20 covariance rather than its
-    // diagonal. The contributions are strongly correlated through the softmax;
-    // using only the diagonal would overstate the uncertainty of a difference
-    // and refuse to rank things that are in fact distinguishable, which is its
-    // own kind of dishonesty.
-    //
-    // Concretely: export the covariance matrix, finite-difference the scorer in
-    // the Worker for the gradient, and extend the parity fixture to the
-    // resulting intervals. An unverified second implementation of a variance
-    // calculation is worse than none, so the route waits for the fixture too.
+    summary: "Zones ranked by their priced contribution, with the ties left tied.",
+    state: "live",
     willServe:
-      "A ranked list — or an explicitly unordered set when the intervals overlap, " +
+      "A ranked list - or an explicitly unordered set when the intervals overlap, " +
       "because ranking indistinguishable options is a way of lying.",
     milestone: M4,
-    backedBy: "the priced shot-mix contribution, with delta-method intervals per zone",
+    backedBy:
+      "the priced shot-mix contribution, with delta-method intervals from the " +
+      "full 20x20 coefficient covariance",
   },
   {
     method: "POST",
