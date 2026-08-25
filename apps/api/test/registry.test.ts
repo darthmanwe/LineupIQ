@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+// `?raw` inlines the file's text at build time. `readFileSync` is not an option:
+// there is no filesystem in workerd, and an `import.meta.url` path resolves to
+// `/C:/...` on Windows, which its shim rejects outright.
+import overview from "../../web/src/app/page.tsx?raw";
+
 import app from "../src/index";
 import { PROBLEM_CONTENT_TYPE } from "../src/http/problem";
 import { ROUTES, UNBACKED_ROUTES } from "../src/routes/registry";
@@ -143,5 +148,49 @@ describe("unknown routes", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.code).toBe("NO_SUCH_ROUTE");
     expect(body.registry).toBe("/api");
+  });
+});
+
+describe("the site does not contradict the registry", () => {
+  /**
+   * The overview page is the first screen a visitor sees, and it went stale for
+   * the entire time this project was being built: it said "Milestone 1 of 8 —
+   * every analytics endpoint returns 501" while sixteen endpoints were live and
+   * both models were fitted.
+   *
+   * Every published *number* here is generated from a run log and re-derived in
+   * CI. None of that machinery covers prose, and prose is what told a visitor
+   * the project was not built. This is the cheapest possible guard on the one
+   * claim that actually misleads: the front page saying nothing works while the
+   * registry says otherwise.
+   */
+  /**
+   * Comments stripped first. The file's own header describes the stale text in
+   * order to explain why this guard exists, and the first version of the guard
+   * matched that description and failed — a check that cannot tell a page from
+   * a note about the page is not checking the page.
+   */
+  const rendered = overview.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("does not claim endpoints are unbacked while the registry serves them", () => {
+    const liveRoutes = ROUTES.filter((r) => r.state === "live");
+    expect(liveRoutes.length).toBeGreaterThan(0);
+
+    // Phrases that are only true of a skeleton. Each one was, at some point,
+    // literally on the page.
+    for (const stale of [
+      /every analytics endpoint returns/i,
+      /Milestone \d+ of \d+/i,
+      /the skeleton is deployed/i,
+    ]) {
+      expect(rendered, `overview page still says: ${stale}`).not.toMatch(stale);
+    }
+  });
+
+  it("does not promise as future work something already built", () => {
+    // "Next: ingest three seasons ... and reconstruct which five players were
+    // on the floor" survived on the page long after both were done.
+    expect(rendered).not.toMatch(/Next:\s*ingest/i);
+    expect(rendered).not.toMatch(/What this will do/i);
   });
 });
