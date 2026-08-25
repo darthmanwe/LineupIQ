@@ -46,6 +46,14 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 
+  // Build scripts are CLIs. `no-console` exists to stop stray debugging output
+  // reaching a Worker log; in a script whose entire job is to report what it
+  // captured, stdout *is* the interface.
+  {
+    files: ["scripts/**/*.mjs"],
+    rules: { "no-console": "off" },
+  },
+
   // Must stay last: turns off every stylistic rule Prettier already owns.
   prettier
 );

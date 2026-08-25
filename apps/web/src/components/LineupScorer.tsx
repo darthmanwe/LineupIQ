@@ -96,6 +96,11 @@ export function LineupScorer({
   const [failed, setFailed] = useState<string | null>(null);
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  // One zone vocabulary, shared with the court. Both read `zones.json`.
+  const zoneLabels = useMemo(
+    () => Object.fromEntries(shapes.map((shape) => [shape.id, shape.label])),
+    [shapes]
+  );
 
   const values: Record<string, ZoneValue | undefined> = useMemo(() => {
     if (!result) return {};
@@ -122,6 +127,14 @@ export function LineupScorer({
     }
     return out;
   }, [result]);
+
+  // Whether any zone runs past the fixed colour domain. The scale stays fixed --
+  // that is what makes two lineups comparable -- so the caption has to say when
+  // a zone has been clipped rather than let the reader assume it has not.
+  const saturated = useMemo(
+    () => Object.values(values).some((v) => v !== undefined && Math.abs(v.deviation) >= DOMAIN),
+    [values]
+  );
 
   async function score(): Promise<void> {
     setBusy(true);
@@ -305,11 +318,25 @@ export function LineupScorer({
                   `Percentage points of ${result.data.shooter.name ?? "this shooter"}'s attempts ` +
                   `that this five-man lineup moves into each zone, against the same shooter with ` +
                   `a league-average lineup. Scale is fixed at ±1.00 point so two lineups are ` +
-                  `comparable; these effects are much smaller than that, which is the finding.`
+                  `directly comparable` +
+                  // Named only when it happens. The earlier version of this
+                  // caption asserted "these effects are much smaller than that"
+                  // unconditionally, and that was two mistakes at once: it
+                  // borrowed the *priced* effect's spread (0.19 points per 100)
+                  // to describe a *share* shift, which is a different quantity,
+                  // and it was flatly wrong for a real lineup -- Denver's
+                  // championship five move Jokic 1.16 points of share out of
+                  // above-the-break threes, past the end of the scale. A chart
+                  // whose caption contradicts the chart is worse than one with
+                  // no caption.
+                  (saturated
+                    ? `. One or more zones exceed it and are drawn at full saturation; ` +
+                      `read those from the table.`
+                    : `; every zone here is inside it.`)
                 }
               />
               <PricedShift result={result} />
-              {ranking && <PlayRanking ranking={ranking} />}
+              {ranking && <PlayRanking ranking={ranking} labels={zoneLabels} />}
               {result.meta.warnings.map((warning) => (
                 <p className="scorer__warn" key={warning}>
                   {warning}

@@ -73,17 +73,33 @@ const GAIN = "#c74845";
 const LOSS = "#2a78d6";
 
 const ROW = 30;
-const LABEL_WIDTH = 132;
+const LABEL_WIDTH = 300;
 const VALUE_WIDTH = 156;
-const PLOT_WIDTH = 260;
+const PLOT_WIDTH = 230;
 const RANK_WIDTH = 34;
 
-function zoneLabel(id: string): string {
-  return id.replace(/_/g, " ");
+/**
+ * Zone names come from `zones.json`, the same file the court is drawn from and
+ * the same file Python generates the geometry from.
+ *
+ * Not a local map of prettier strings. One vocabulary, three consumers: a
+ * second copy here would drift, and the drift would be invisible — the chart
+ * would simply call a zone something the court does not.
+ */
+function useZoneLabel(labels: Record<string, string>) {
+  return (id: string): string => labels[id] ?? id.replace(/_/g, " ");
 }
 
-export function PlayRanking({ ranking }: { ranking: PlayRankingResponse }): React.ReactElement {
+export function PlayRanking({
+  ranking,
+  labels,
+}: {
+  ranking: PlayRankingResponse;
+  /** `zone_id` to display name, from `zones.json`. */
+  labels: Record<string, string>;
+}): React.ReactElement {
   const { plays, bands, ordered, confidence, excluded_zones: excluded } = ranking.data;
+  const zoneLabel = useZoneLabel(labels);
   const level = `${Math.round(confidence * 100)}%`;
 
   // Every magnitude withheld: the tier is below reportable. The ranks survive
@@ -124,10 +140,10 @@ export function PlayRanking({ ranking }: { ranking: PlayRankingResponse }): Reac
       </p>
 
       {withheld ? (
-        <BandList bands={bands} plays={plays} />
+        <BandList bands={bands} plays={plays} labels={labels} />
       ) : (
         <div className="ranking__scroll">
-          <Forest plays={plays} bands={bands} level={level} />
+          <Forest plays={plays} bands={bands} level={level} labels={labels} />
         </div>
       )}
 
@@ -151,7 +167,8 @@ export function PlayRanking({ ranking }: { ranking: PlayRankingResponse }): Reac
         {excluded.length > 0 && (
           <>
             {" "}
-            {excluded.length} low-volume zone(s) were not ranked: {excluded.join(", ")}.
+            {excluded.length === 1 ? "One zone is" : `${excluded.length} zones are`} below the
+            volume floor and were not ranked: {excluded.map(zoneLabel).join("; ")}.
           </>
         )}
       </p>
@@ -160,7 +177,16 @@ export function PlayRanking({ ranking }: { ranking: PlayRankingResponse }): Reac
 }
 
 /** The ranks with no numbers, for a lineup below the reportable floor. */
-function BandList({ bands, plays }: { bands: string[][]; plays: Play[] }): React.ReactElement {
+function BandList({
+  bands,
+  plays,
+  labels,
+}: {
+  bands: string[][];
+  plays: Play[];
+  labels: Record<string, string>;
+}): React.ReactElement {
+  const zoneLabel = useZoneLabel(labels);
   const direction = new Map(plays.map((p) => [p.zone_id, p.points_direction]));
   return (
     <div>
@@ -193,11 +219,14 @@ function Forest({
   plays,
   bands,
   level,
+  labels,
 }: {
   plays: Play[];
   bands: string[][];
   level: string;
+  labels: Record<string, string>;
 }): React.ReactElement {
+  const zoneLabel = useZoneLabel(labels);
   const lows = plays.map((p) => (p.interval ? p.interval[0] : (p.points_per_100 ?? 0)));
   const highs = plays.map((p) => (p.interval ? p.interval[1] : (p.points_per_100 ?? 0)));
   // Zero is always in the domain: it is the reference every value is signed
@@ -271,7 +300,7 @@ function Forest({
           <path
             key={`bracket-${i}`}
             className="forest__bracket"
-            d={`M ${RANK_WIDTH + 8} ${top} h -5 V ${bottom} h 5`}
+            d={`M ${RANK_WIDTH - 4} ${top} h -6 V ${bottom} h 6`}
           />
         );
       })}
@@ -287,11 +316,13 @@ function Forest({
         return (
           <g key={play.zone_id}>
             {firstOfBand && (
-              <text className="forest__rank" x={RANK_WIDTH} y={y + 3} textAnchor="end">
+              <text className="forest__rank" x={4} y={y + 3}>
                 #{play.rank}
               </text>
             )}
-            <text className="forest__zone" x={LABEL_WIDTH - 10} y={y + 4} textAnchor="end">
+            {/* Left-aligned, growing away from the rank. Right-aligning it put
+                a long zone name straight through the rank number. */}
+            <text className="forest__zone" x={RANK_WIDTH + 8} y={y + 4}>
               {zoneLabel(play.zone_id)}
             </text>
             {/* 2px line, 8px marker, and a surface ring so an interval crossing

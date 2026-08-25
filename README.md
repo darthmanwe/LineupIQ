@@ -1,102 +1,90 @@
 # LineupIQ
 
-**Given any five NBA players, which shots each should take — with the possession count
-behind every number, and an explicit refusal when there isn't one.**
+**Given any five NBA players — including five who have never shared a floor — which shots
+each should take, with the possession count behind every number and an explicit refusal
+when there isn't one.**
 
 [![CI](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml/badge.svg)](https://github.com/darthmanwe/LineupIQ/actions/workflows/ci.yml)
+[![Reproducibility](https://github.com/darthmanwe/LineupIQ/actions/workflows/repro.yml/badge.svg)](https://github.com/darthmanwe/LineupIQ/actions/workflows/repro.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Status: milestones 1–5 and 7 of 8.** Three seasons are ingested, lineups are
-> reconstructed and validated against box-score minutes, two shot models (conversion and
-> selection) are fitted against full baseline ladders, RAPM is fitted on possessions with
-> published split-half reliability, the trade projection is backtested against real
-> mid-season moves with its power analysis stated first, and the court heatmap is live.
-> **The selection model is served**: `POST /api/lineups/score` scores any five-man lineup,
-> including combinations that have never played a possession together, and the TypeScript
-> implementation is asserted equal to the Python fit to 1e-9 over 507 committed cases. The
-> retrieval evaluation and the groundedness harness run offline; live narrative generation
-> is not built, and its endpoints return `501 NOT_YET_BACKED` naming what will back them. No
-> number in this README is typed by hand — every one is rendered from a run log by
-> `lineupiq report render`, and CI fails if a committed block goes stale.
+![Denver's championship five, scored](docs/media/01-lineup-scored.png)
+
+Three seasons of NBA play-by-play, reconstructed into who was on the floor for every one of
+698,314 shots, then modelled two ways: *does he make it* and *which shot does he take*.
+The second turns out to be the interesting question. Pick any five players and the answer
+is computed live, in a Cloudflare Worker, from a closed form that agrees with the Python
+fit to 1e-9.
 
 ---
 
-## The headline finding, stated up front
+## The finding
 
-**Lineup context does almost nothing to shot outcomes and something real, small and
-directional to shot selection — and the direction is the opposite of what was
+**Lineup context does almost nothing to whether a shot goes in, and something real, small
+and directional to which shot gets taken — in the opposite direction from what was
 pre-registered.**
 
-Three numbers, all on leave-lineup-out: held-out five-man combinations whose five players
-were each seen during training.
-
-| Question | Target | Lineup context adds |
+<!-- lineupiq:begin id=results.headline -->
+| Question | Target | What lineup context adds |
 | --- | --- | --- |
-| Does he make it? | `P(make \| shooter, zone, lineup)` | **+0.02%** log loss (served) |
-| Which shot does he take? | `P(zone \| shooter, lineup, context)` | **+0.08%** log loss (served), and the same unconstrained |
+| Does he make it? | `P(make \| shooter, zone, lineup)` | **+0.02%** log loss |
+| Which shot does he take? | `P(zone \| shooter, lineup, context)` | **+0.08%** log loss |
 
-Measuring conversion and concluding "lineups don't matter" answers the wrong question
-well. Spacing does not make a player a better corner shooter; it gets him _a corner three
-instead of a contested pull-up_. Moving the target to shot selection multiplies the
-measurable lineup effect by about four in the served model — and both model classes,
-linear and boosted, agree on it independently.
+The pre-registered `spacing_x_three` term was expected **positive** and fitted at **-0.474**, standard error 0.045, z = -10.5.
+<!-- lineupiq:end id=results.headline -->
 
-It is still small. What is not small is the **direction**, and this is the part worth
-reading:
+Both measured on **leave-lineup-out**: held-out five-man combinations whose five players
+were each seen in training. Measuring conversion and concluding "lineups don't matter"
+answers the wrong question well. Spacing does not make a player a better corner shooter; it
+gets him *a corner three instead of a contested pull-up*.
 
-`spacing_x_three` — the coefficient for "teammates who shoot threes make _this_ player
-shoot more threes" — was pre-registered as **positive** in the source before the model
-was fitted. It came out **−0.474**. Nine of ten pre-registered signs agreed; the marquee
-one did not. It survives restricting to high-volume shooters (−0.515) and survives
-centring within shooter, which removes between-player variation entirely (−0.447). Under
-the negative control — the same five players randomly reassigned to other attempts — it
-collapses to **−0.017**, so it is measuring lineups and not an artefact.
+And the term that was supposed to prove it came out backwards — more shooting around you,
+more threes for you, is what the sign was registered for. That is not noise at this
+standard error; it is a decisive contradiction of the stated expectation, and it survives a
+within-shooter refit that removes all between-player variation. The reading is that the
+model recovers *role*, not *space*: put a shooter beside four other shooters and someone
+has to operate inside.
 
-The substantive reading is **shot-mix substitution**: a team's attempts live on a simplex,
-so if everyone shot more threes when surrounded by shooters the mix would run away. Put
-four shooters on the floor and somebody has to attack the rim, and for a given player that
-somebody is more often him. `spacing_min_x_three` — the _worst_ spacer on the floor —
-stays positive, so raising the floor of spacing does push toward threes while raising the
-mean pulls this particular shooter inside.
+The pre-registered expectation stays in the source, as written, next to the coefficient
+that contradicts it.
 
-The pre-registered expectation was wrong. It stays in the source, as written, next to the
-coefficient that contradicts it.
+**And it is small.** Priced across thousands of random lineups, the whole shot-mix shift is
+worth a standard deviation of **under 0.2 points per 100 attempts** — the table further down
+is generated from the run log. Every coefficient in the model is overwhelmingly significant,
+the smallest |z| being about 4, and the effect is economically negligible. Those are the same fact from two sides,
+and reporting the first without the second is how a real result becomes an overclaim.
 
-## What it does
+---
 
-Pick any five players. LineupIQ estimates what each should shoot and from where, given who
-else is on the floor, then projects how a trade changes it.
+## Where the evidence runs out
 
-| Page                    | What it answers                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Lineup Optimizer**    | **Live:** the shot-value surface by zone, plus a picker — choose any five players and see how that lineup moves a shooter's attempts between zones. Refusals render as refusals. |
-| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
-| **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.          |
-| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
+The project's organising constraint is not modelling. It is that **99% of NBA five-man
+lineups have never played enough to support a point estimate.**
 
-The picker scores combinations that have never played a possession together — which is the
-whole point, and the reason the model is a conditional logit rather than the
-gradient-boosted fit it is benchmarked against. Nine dot products and a softmax fit inside a
-10 ms CPU budget; `C(450, 5)` is 1.5×10¹¹, so nothing could have been precomputed. What that
-constraint costs in log loss is published below rather than absorbed.
+<table>
+<tr>
+<td width="50%">
 
-## Why this is hard
+A lineup's offensive rating has a standard error of about `115/√n` per 100 possessions.
+At 200 possessions that is ±8 — against a true spread between good and bad lineups of
+roughly 6–8. Below that floor the measurement is noisier than the entire signal.
 
-Not the modelling — the sample size.
+So the API refuses. Not a small number with a wide interval and a footnote: a
+`422 INSUFFICIENT_SUPPORT` carrying how many possessions exist, how many are needed, which
+players fall short, and what would change the answer.
 
-A lineup's offensive rating has a standard error of roughly `115/√n` per 100 possessions,
-where _n_ is possessions played together. Most five-man lineups play well under 200
-possessions in a season. At that sample the measurement noise on a single lineup is about
-as large as the entire spread between good and bad lineups.
+Between "refuse" and "answer" there is a third state, and it is the normal one for a
+counterfactual: the player terms have support and the five-man combination does not. That
+returns `200` with **the direction and no digits**.
 
-Two things follow, and they shape the whole project:
+</td>
+<td width="50%">
 
-1. **A single lineup's observed rating is not a target you can score a model against.**
-   Validation has to pool across lineups, or move down to the shot level where Bernoulli
-   observations are plentiful.
-2. **The headline product claim is counterfactual by construction.** Forecasting a trade
-   means predicting lineups that have never existed. That cannot be validated by
-   calibration curves on lineups that have.
+![A refusal, rendered as a refusal](docs/media/03-refusal.png)
+
+</td>
+</tr>
+</table>
 
 <!-- lineupiq:begin id=results.estimability -->
 | | Value |
@@ -113,7 +101,59 @@ So **99.0% of lineups cannot support a point estimate at all** -- which
 is why the refusal contract is a feature of the API rather than an error path.
 <!-- lineupiq:end id=results.estimability -->
 
-## What was built
+The thresholds are **pre-registered and hash-pinned**. CI asserts the file has not changed,
+so loosening a floor to make a demo look better is a build failure rather than a judgement
+call.
+
+Two things follow, and they shape the whole project. A single lineup's observed rating is
+**not a target a model can be scored against** — validation has to pool across lineups, or
+move down to the shot level where Bernoulli observations are plentiful. And the headline
+product claim is **counterfactual by construction**: forecasting a trade means predicting
+lineups that have never existed, which no calibration curve on lineups that have can
+validate.
+
+---
+
+## Ranking without overclaiming
+
+![Ranked zones with intervals](docs/media/02-play-ranking.png)
+
+`/lineups/optimal-plays` splits the priced shift by zone and ranks it. Sorting nine numbers
+is trivial; the difficulty is that **a sorted list reads as a claim that the first beats the
+second**, and at this effect size most of those claims are not supported.
+
+So every pair is tested before the list is served as an ordering — and the test is on the
+*difference*, not on whether two intervals overlap. Zone shares come out of a softmax and
+sum to one, so two contributions are strongly negatively correlated and `Var(a − b)` is far
+smaller than `Var(a) + Var(b)`. Comparing marginal intervals drops that term and refuses to
+rank pairs the model can order perfectly well. **7.4% of ranked pairs separate on the
+difference and would have been declined by the cheaper test** — which is why a 20×20
+covariance matrix ships to the edge instead of twenty standard errors.
+
+Zones the data cannot separate share a rank. When nothing separates, the response says
+`ordered: false` and the page renders an unordered set.
+
+---
+
+## Tech stack
+
+| Layer | Choice | Why this one |
+| --- | --- | --- |
+| **Modelling** | Python 3.11–3.13, polars, numpy, scipy, scikit-learn, LightGBM | polars for the possession-grain joins; the served model is hand-written so it can be mirrored in TypeScript |
+| **Served model** | Conditional logit — closed form, 9 dot products and a softmax | A GBDT cannot run in 10 ms of Worker CPU, and `C(450,5) = 1.5×10¹¹` means nothing can be precomputed |
+| **API** | Hono on Cloudflare Workers, TypeScript strict + `noUncheckedIndexedAccess` | Always-on free tier, no cold-start sleep, one deploy for API and site |
+| **Web** | Next.js 16 static export, hand-written SVG charts, no chart library | Served as static assets by the same Worker; charts are ~200 lines and encode the uncertainty rules directly |
+| **Data** | Committed Parquet gold layer (31 MB) with checksummed contracts | A clean clone reproduces every published number offline — no API key, no network, no account |
+| **Tooling** | uv, ruff, mypy `disallow_untyped_defs`, ESLint, Prettier, vitest in `workerd` | The TypeScript tests run in the actual Workers runtime, not in Node |
+| **CI** | 14 jobs on GitHub Actions — 21 with the OS × version matrix, Windows × Linux, Python 3.11–3.13, Node 22/24 | Offline and free by default; a separate workflow refits both models and asserts every metric reproduces |
+| **Optional** | Snowflake DDL generated from the same table registry, `sqlfluff`-linted | Entirely off the demo path — real, versioned, and honest about what was executed |
+
+**Scale:** ~19,700 lines of Python and TypeScript, ~5,300 lines of tests, 341 tests
+(237 Python, 104 in `workerd`), 16 live endpoints.
+
+---
+
+## What the engineering had to solve
 
 <!-- lineupiq:begin id=results.dataquality -->
 | | Value |
@@ -125,25 +165,59 @@ is why the refusal contract is a feature of the API rather than an error path.
 | Stints reconstructed | 117,766 |
 <!-- lineupiq:end id=results.dataquality -->
 
-Play-by-play does not record who is on the floor — only substitutions and who did things.
-Recovering the five-man lineup for every event means replaying each period forward from a
-starting five that is never stated.
-
-The reconstruction is validated against **box-score minutes**, the one genuinely
-independent check available here: the box score comes from a different system, and minutes
-played is a physical quantity. A lineup reconstruction can agree with another _derived_
-lineup file and still be wrong in the same way; it cannot disagree with the clock and be
-right. Derived minutes land within about one second per player-game across ~84,000
-player-games, and a player the box score says did not play must derive exactly zero
-minutes — that is a hard failure, not a tolerance miss.
-
-Two details carry most of the accuracy:
+**Nobody records who is on the floor.** Play-by-play gives substitutions and who did things;
+the five-man lineup for every event has to be replayed forward from a starting five that is
+never stated. Two details carry most of the accuracy, and both are counterintuitive:
 
 - **`EVENTNUM` is not chronological.** Sorting by it produces hundreds of impossible states
-  per season. Sorting by the game clock instead cut invariant violations by ~91%.
+  per season — players shooting while off the floor. Sorting by the game clock cut invariant
+  violations by ~91%.
 - **Events tied on the clock must be evaluated tolerantly.** A player very often fouls and
-  is substituted on the same tick; insisting on one order rejects the true starting five.
-  That single detail moved exact solves from 39% to 98%.
+  is substituted on the same tick, and insisting on one order rejects the true starting
+  five. That single detail moved exact solves from 39% to 98%.
+
+The result is validated against **box-score minutes** — the one genuinely independent check
+available, because the box score comes from a different system and minutes played is a
+physical quantity. Derived minutes land within about a second per player-game across
+~84,000 player-games, and a player the box score says did not play must derive exactly zero.
+
+**Possession end times are outcome-contaminated.** A possession ends on a made shot at the
+shot, and on a miss at the rebound a beat later. So "how long did this possession last" leaks
+the outcome: shots that end their possession convert at **93.3%** against **1.3%** for shots
+that do not. Both columns are attached for reporting and both are in `FORBIDDEN_FEATURES`,
+and the design matrix is narrowed to a whitelist before anything is computed — so they cannot
+be read by accident rather than merely by discipline.
+
+**Six reproducibility bugs, all the same shape.** Ordering that looked deterministic because
+it was seeded. A `group_by` makes no ordering promise; `np.argsort` defaults to an unstable
+sort; reciprocal rank fusion produces exact ties constantly. Each one made a published number
+depend on the machine's core count. The most recent moved a placebo sample from 64 to 66
+between two runs on the same machine — a seeded draw over an unordered population is not
+reproducibility, and `git diff` had never noticed because the committed baseline happened to
+match the machine that wrote it.
+
+---
+
+## What it does
+
+Pick any five players. LineupIQ estimates what each should shoot and from where, given who
+else is on the floor, then projects how a trade changes it.
+
+| Page                    | What it answers                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Lineup Optimizer**    | **Live:** the shot-value surface by zone, plus a picker — choose any five players and see how that lineup moves a shooter's attempts between zones. Refusals render as refusals. |
+| **Trade Simulator**     | **Live:** the backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
+| **Evidence / Comps**    | Free-text search over historical lineup documents, with a retriever toggle and published retrieval metrics.          |
+| **Data Quality & Eval** | **Live:** all 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
+
+What the closed-form serving constraint costs in log loss against the unconstrained
+gradient-boosted fit is measured and published in the results below, rather than absorbed
+silently.
+
+| | |
+| --- | --- |
+| ![Data quality gates](docs/media/05-quality.png) | ![The withheld trade endpoint](docs/media/06-trade.png) |
+| Every data-quality gate with its threshold and verdict. | The endpoint that refuses to exist, and publishes why. |
 
 ## The possession layer, and why it exists
 
@@ -204,25 +278,26 @@ with about a quarter of a point per possession between them. Nothing in
 the pipeline was fitted to produce that ordering.
 <!-- lineupiq:end id=results.possessions -->
 
-## What it refuses to answer
+## The refusal contract, exactly
 
-This is the part worth reading, and it is deliberately above the architecture section.
-
-The API has two distinct refusal mechanisms, and it is exact about which fires when:
+Two distinct mechanisms, and the API is exact about which fires when:
 
 - **`422 INSUFFICIENT_SUPPORT`** — the claim itself has no basis. A problem document, never
   a 200. It carries the possession count, the threshold, _which_ players fall short, and
   what would help. "Not enough data" without "of what" is not an answer.
 - **`200` with `tier: "directional"` and a null point estimate** — the player-level terms
   have support but the lineup-interaction term does not. This is the normal case for a
-  post-trade lineup. The interval is populated; the centre mark is not.
+  post-trade lineup. The direction survives; the magnitude, and its interval, do not.
 
-Never a 200 with a confident number and a footnote.
+Never a 200 with a confident number and a footnote. The rule is enforced by a **sweep**, not
+by examples: a test walks every low-support lineup in the parity fixture through every live
+scoring route, and it fails the build the moment a new `POST` route appears in the registry
+that it does not know how to gate. Forgetting to gate a new endpoint is the natural
+mistake — the route works, the numbers look plausible, and nothing raises.
 
-The thresholds are pre-registered and hash-pinned in
-[`support_thresholds.json`](services/ml/src/lineupiq/configs/support_thresholds.json)
-_before_ any lineup-level result was computed, and CI asserts the hash is unchanged — so
-loosening a floor to make a demo look better fails the build.
+Thresholds live in
+[`support_thresholds.json`](services/ml/src/lineupiq/configs/support_thresholds.json),
+hash-pinned _before_ any lineup-level result was computed.
 
 Some things are refused permanently rather than pending. `/api/leaderboards/gravity`
 returns `410 METRIC_WITHDRAWN`: gravity needs player-tracking data, this project uses
@@ -784,23 +859,38 @@ including an arithmetic mistake in its headline formula and a contradiction abou
   discontinuous in the predictions. Both are fixed; both are described in
   [`docs/modeling.md`](docs/modeling.md).
 
-## Roadmap
+## State of play
 
-|     | Milestone                                                                      | State                                                                       |
-| --- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| M1  | Skeleton: route registry, refusal plumbing, CI, both toolchains                | **done**                                                                    |
-| M2  | Ingest 3 seasons; stint reconstruction validated against box-score minutes     | **done**                                                                    |
-| M3  | Shot model, calibration, baseline ladder, leakage assertions, negative control  | **done** — and the served scorer, parity-proven to 1e-9                     |
-| M4  | Pre-registered support thresholds and the refusal contract                     | **done** — thresholds hash-pinned, API wired, court heatmap live            |
-| M5  | Trade simulator and the counterfactual backtest                                | **partial** — backtest done, verdict `UNDERPOWERED`; served deltas withheld |
-| M6  | Retrieval and the LLM evaluation harness                                       | **partial** — retrieval ablation and groundedness done; no LLM has been called |
-| M7  | Snowflake adapter                                                              | **done** — DDL generated from the same contracts, `sqlfluff`-linted in CI   |
-| M8  | Results generated from run logs                                                | **done** — media capture and deploy outstanding                             |
+| Built | |
+| --- | --- |
+| Ingest, stint reconstruction, possession layer | 3 seasons, validated against box-score minutes and an independent lineup oracle |
+| Conversion model + selection model | Full baseline ladders, calibration, negative controls, leakage assertions |
+| Served scorer and play ranking | Live, closed-form, parity-proven to 1e-9 against the Python fit |
+| RAPM | Fitted on possessions, split-half reliability published, non-identified players named |
+| Trade backtest | Ran; its own power analysis says `UNDERPOWERED`, and the projection endpoint is withheld because of it |
+| Refusal contract | Pre-registered, hash-pinned, enforced by a sweep over every scoring route |
+| Retrieval + groundedness evaluation | Offline, reproducible from a clean clone, both distractor controls published |
+| Snowflake adapter | DDL generated from the same table registry, `sqlfluff`-linted in CI |
 
-M5 is deliberately incomplete rather than pending. The backtest ran, and its own power
-analysis says the minimum detectable effect is the same size as the effects it projects, so
-`POST /api/trades/simulate` stays at `501`. Shipping a projection whose accuracy cannot be
-established is the failure this repository is built to avoid.
+| Deliberately not built | Why |
+| --- | --- |
+| `POST /api/trades/simulate` | The backtest's minimum detectable effect is the same size as the effects it projects. Shipping a projection whose accuracy cannot be established is the failure this repository exists to avoid. |
+| `/api/leaderboards/gravity` | Needs player-tracking data. Returns `410`, not `501` — a client should stop asking. |
+| Live LLM narratives | The evaluation harness runs today against templated text. A language model has never been called by this repository, and the cache and judge-agreement labels are outstanding. |
+| Era weighting | Over three seasons the column would be constant. Shipping a weighting scheme driven by a constant column is the same category of overclaim as fabricating data. |
+
+**Deploying it** takes one command, and it is the one step that could not be automated here
+because `wrangler login` is an interactive browser OAuth flow:
+
+```bash
+npx wrangler login
+npm --workspace apps/web run build
+npx wrangler deploy --env production --config apps/api/wrangler.toml
+```
+
+There are deliberately **no top-level bindings** in `wrangler.toml`, so a bare
+`wrangler deploy` fails rather than quietly shipping against whatever database happens to be
+first in the file.
 
 ---
 

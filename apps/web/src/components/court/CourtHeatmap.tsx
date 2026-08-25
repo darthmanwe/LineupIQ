@@ -82,6 +82,24 @@ export type MetricSpec = {
   formatSecondaryCell: (value: ZoneValue) => string;
   /** Header for the count column. */
   countLabel: string;
+  /**
+   * The in-zone sample-size label, or `null` to print none.
+   *
+   * Not every metric has a per-zone sample size, and printing one that does not
+   * exist is worse than printing nothing. The league surface genuinely measures
+   * each zone separately, so `n=6,176` under a zone is a fact about that zone.
+   * The selection surface does not: its value is a model prediction, and the
+   * only count in scope is the *lineup's* possessions, which is the same number
+   * in all nine zones — and is `0` for a counterfactual five that has never
+   * played together, which is the normal case for this product.
+   *
+   * Rendering `n=0` beneath a predicted `+0.09` says the prediction came from
+   * nothing. It came from 671,251 attempts fitting twenty parameters. The
+   * lineup's own possession count belongs in the caption, where it is a
+   * statement about support rather than about sample size, and where it already
+   * appears.
+   */
+  formatCount: (value: ZoneValue) => string | null;
 };
 
 /** Expected points per attempt, the original and still the default. */
@@ -94,6 +112,7 @@ export const POINTS_PER_ATTEMPT: MetricSpec = {
   secondaryLabel: "FG%",
   formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(1)}%`,
   countLabel: "Attempts",
+  formatCount: (v) => `n=${v.attempts.toLocaleString()}`,
 };
 
 /**
@@ -118,6 +137,8 @@ export const ATTEMPT_SHARE: MetricSpec = {
   secondaryLabel: "Baseline",
   formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(2)}%`,
   countLabel: "Possessions",
+  // No per-zone count exists here. See `formatCount` on MetricSpec.
+  formatCount: () => null,
 };
 
 export type CourtHeatmapProps = {
@@ -303,18 +324,21 @@ export function CourtHeatmap({
           <circle cx="0" cy="375" r="40" />
         </g>
 
-        {/* Every zone labels its own n. */}
+        {/* Every zone labels its own n — where a per-zone n exists. */}
         {shapes.map((shape) => {
           const value = values[shape.id];
           const unsupported = !value || value.below_floor;
+          const count = value ? metric.formatCount(value) : null;
           return (
             <g key={`${shape.id}-label`}>
               <text className="court__label" x={shape.labelAt.x} y={shape.labelAt.y}>
                 {unsupported ? "—" : metric.formatDeviation(value.deviation)}
               </text>
-              <text className="court__sub" x={shape.labelAt.x} y={shape.labelAt.y + 15}>
-                n={value ? value.attempts.toLocaleString() : 0}
-              </text>
+              {count !== null && (
+                <text className="court__sub" x={shape.labelAt.x} y={shape.labelAt.y + 15}>
+                  {count}
+                </text>
+              )}
             </g>
           );
         })}

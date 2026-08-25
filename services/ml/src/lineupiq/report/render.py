@@ -113,6 +113,62 @@ def _estimability(ctx: RenderContext) -> str:
     return "\n".join(lines)
 
 
+def _headline(ctx: RenderContext) -> str:
+    """The four numbers the README opens with.
+
+    They already appear further down, inside three different generated tables.
+    The reason they are generated *again* here rather than typed once at the top
+    is that the top of a README is exactly where a stale number does the most
+    damage: it is the part a reader trusts without checking, and the part nobody
+    re-reads after a refit.
+
+    This is the same rule the rest of the file follows -- humans own the prose,
+    the tool owns every number -- applied to the one place it is most tempting to
+    skip.
+    """
+    if ctx.run is None or ctx.selection_run is None:
+        return "\n_No run logs. Run `lineupiq train` and `lineupiq selection` first._\n"
+
+    def gain(run: dict[str, Any], split: str, model: str, against: str) -> float | None:
+        block = run.get("metrics", {}).get(split, {})
+        full = block.get(model, {}).get("log_loss")
+        base = block.get(against, {}).get("log_loss")
+        if full is None or base is None or not base:
+            return None
+        return 100.0 * (float(base) - float(full)) / float(base)
+
+    conversion = gain(ctx.run, "leave_lineup_out", "full", "B2")
+    selection = gain(ctx.selection_run, "leave_lineup_out", "full", "S2")
+
+    audit = ctx.selection_run.get("model", {}).get("sign_audit", {})
+    spacing = audit.get("spacing_x_three", {})
+    coefficient = spacing.get("value")
+    error = spacing.get("standard_error")
+
+    rows = [
+        "",
+        "| Question | Target | What lineup context adds |",
+        "| --- | --- | --- |",
+        f"| Does he make it? | `P(make \\| shooter, zone, lineup)` | "
+        f"**{'n/a' if conversion is None else f'{conversion:+.2f}%'}** log loss |",
+        f"| Which shot does he take? | `P(zone \\| shooter, lineup, context)` | "
+        f"**{'n/a' if selection is None else f'{selection:+.2f}%'}** log loss |",
+        "",
+    ]
+    if coefficient is not None:
+        interval = ""
+        if error:
+            interval = (
+                f", standard error {float(error):.3f}, z = {float(coefficient) / float(error):+.1f}"
+            )
+        rows.append(
+            f"The pre-registered `spacing_x_three` term was expected **positive** and fitted "
+            f"at **{float(coefficient):+.3f}**{interval}."
+        )
+        rows.append("")
+    return "\n".join(rows)
+
+
 def _model_results(ctx: RenderContext) -> str:
     if ctx.run is None:
         return "\n_No run log. Run `lineupiq train` first._\n"
@@ -997,6 +1053,7 @@ def _groundedness(ctx: RenderContext) -> str:
 
 
 RENDERERS = {
+    "results.headline": _headline,
     "results.estimability": _estimability,
     "results.model": _model_results,
     "results.selection": _selection_results,
