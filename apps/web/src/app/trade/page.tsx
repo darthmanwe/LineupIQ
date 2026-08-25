@@ -13,8 +13,9 @@ import evaluationData from "../../../public/data/evaluation.json";
  * answer move when you change it is the most honest thing here.
  *
  * What it toggles is a real backtest, run three times with three different rules
- * and committed. It is not a live simulator: projecting an arbitrary swap needs
- * the served scorer, and `POST /api/trades/simulate` returns `501` naming it.
+ * and committed. It is not a live simulator: `POST /api/trades/simulate` returns
+ * `501`, and it is withheld on the power analysis rather than pending on missing
+ * machinery. The projection runs; the sample cannot establish that it is right.
  */
 
 type Arm = {
@@ -240,11 +241,12 @@ export default function TradePage() {
       )}
 
       <div className="note">
-        <strong>Not built: an arbitrary swap.</strong> Choosing two players and projecting the delta
-        needs the served scorer, and <code>POST /api/trades/simulate</code> returns <code>501</code>{" "}
-        naming what will back it. What is here is the backtest of the same machinery against moves
-        that actually happened — which is the part that says whether the projection would be worth
-        serving.
+        <strong>Withheld, not pending.</strong> <code>POST /api/trades/simulate</code> returns{" "}
+        <code>501</code>, and the reason is the table above rather than missing machinery — the
+        projection runs, and its own power analysis says the smallest effect this sample could
+        detect is the same size as the effects it projects. What is here is the backtest of that
+        machinery against moves that actually happened, which is the part that says whether the
+        projection would be worth serving. It says not yet.
       </div>
     </main>
   );
