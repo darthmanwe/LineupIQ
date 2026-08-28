@@ -663,6 +663,81 @@ describe("comparing two lineups", () => {
   });
 });
 
+describe("request hygiene", () => {
+  it("clamps `limit` instead of only capping it", async () => {
+    // `Math.min(parseInt(x) || 50, 500)` reads like a cap and is not one. A
+    // negative limit parses to a negative number, survives both the `||` and
+    // the `Math.min`, and `slice(0, -5)` then means "all but the last five" --
+    // so `?limit=-5` returned the entire roster from the parameter whose only
+    // job is to bound the response.
+    const all = playersJson as unknown as { count: number };
+
+    const negative = await get("/api/players?limit=-5");
+    expect(negative.status).toBe(200);
+    const negativeBody = (await negative.json()) as { data: { returned: number } };
+    expect(negativeBody.data.returned).toBeLessThan(all.count);
+    expect(negativeBody.data.returned).toBe(0);
+
+    const huge = await get("/api/players?limit=99999");
+    const hugeBody = (await huge.json()) as { data: { returned: number } };
+    expect(hugeBody.data.returned).toBeLessThanOrEqual(500);
+
+    const nonsense = await get("/api/players?limit=abc");
+    const nonsenseBody = (await nonsense.json()) as { data: { returned: number } };
+    expect(nonsenseBody.data.returned).toBe(50);
+  });
+
+  it("orders players on a total key", async () => {
+    // Possessions descending, id ascending. Without the tiebreak two players on
+    // identical counts order by whatever `Object.entries` yields, which is the
+    // bug shape this repository has found in five other places.
+    const response = await get("/api/players?limit=200");
+    const body = (await response.json()) as {
+      data: { players: Array<{ player_id: string; possessions?: number }> };
+    };
+    const rows = body.data.players;
+    for (let i = 1; i < rows.length; i += 1) {
+      const previous = rows[i - 1] as (typeof rows)[number];
+      const current = rows[i] as (typeof rows)[number];
+      const a = previous.possessions ?? 0;
+      const b = current.possessions ?? 0;
+      expect(a).toBeGreaterThanOrEqual(b);
+      if (a === b) {
+        expect(Number(previous.player_id)).toBeLessThan(Number(current.player_id));
+      }
+    }
+  });
+
+  it("redirects a trailing slash rather than 404ing", async () => {
+    // Every page on this origin ends in a slash because `output: "export"` emits
+    // directories, so `/api/` is the natural thing for a visitor to type -- and
+    // it used to 404 from the one endpoint whose job is discoverability.
+    for (const path of ["/api/", "/api/health/", "/api/zones/"]) {
+      const response = await get(path);
+      expect(response.status, path).toBe(308);
+      const location = response.headers.get("Location");
+      expect(location, path).toBeTruthy();
+      expect(new URL(location as string).pathname, path).toBe(path.replace(/\/$/, ""));
+    }
+  });
+
+  it("uses 308 so a POST survives the redirect", async () => {
+    // A 301 or 302 lets the client turn a POST into a GET. For
+    // `/api/lineups/compare/` that would silently become a method the route does
+    // not serve, and the caller would see a 404 for a body it sent correctly.
+    const response = await post("/api/lineups/compare/", {});
+    expect(response.status).toBe(308);
+    expect(new URL(response.headers.get("Location") as string).pathname).toBe(
+      "/api/lineups/compare"
+    );
+  });
+
+  it("still serves the registry without a trailing slash", async () => {
+    const response = await get("/api");
+    expect(response.status).toBe(200);
+  });
+});
+
 describe("lineup hash endpoint", () => {
   it("returns the numerically-sorted canonical form", async () => {
     const response = await post("/api/lineups/hash", {

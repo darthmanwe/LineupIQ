@@ -212,7 +212,15 @@ export function LineupCompare({
     return out;
   }, [result]);
 
-  /** Copy the left five and change one slot — the swap the product is about. */
+  /**
+   * Make one slot the only difference between the two fives.
+   *
+   * Sets every other comparison slot back to the left lineup and keeps this
+   * one, so the response comes back with a `swap` rather than as a two-player
+   * trade. Labelled "only change slot N" for that reason -- an earlier "reset
+   * slot N" described the mechanism and not the effect, and read as the
+   * opposite of what it does.
+   */
   function swapOne(index: number): void {
     setReference("lineup");
     setRight(left.map((id, i) => (i === index ? (right[i] ?? id) : id)));
@@ -337,6 +345,9 @@ export function LineupCompare({
           <PlayerPicker
             label="Taking the shot"
             value={shooter}
+            // Restricted to the five on the floor: the shooter has to be in both
+            // lineups, so offering the league would offer a 400.
+            restrictTo
             fallback={left.map((id) => byId.get(id)).filter((p): p is Player => p !== undefined)}
             onChange={setShooter}
           />
@@ -390,7 +401,7 @@ export function LineupCompare({
                 {left.map((id, i) =>
                   id === shooter ? null : (
                     <button key={id} type="button" onClick={() => swapOne(i)}>
-                      reset slot {i + 1}
+                      only change slot {i + 1}
                     </button>
                   )
                 )}

@@ -30,7 +30,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </p>
             <nav className="tabs">
               {TABS.map((t) => (
-                <Link key={t.href} href={t.href}>
+                // `prefetch={false}` because this is a static export. The App
+                // Router's prefetch asks for an RSC payload
+                // (`__next.<route>.__PAGE__.txt`) that `output: "export"` never
+                // emits, so every page load fired four 404s and logged four
+                // console errors -- on every page, for every visitor with
+                // devtools open. Clicking was never affected, which is why it
+                // went unnoticed: navigation works, the prefetch does not.
+                <Link key={t.href} href={t.href} prefetch={false}>
                   {t.label}
                 </Link>
               ))}

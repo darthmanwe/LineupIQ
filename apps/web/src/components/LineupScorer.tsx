@@ -254,6 +254,10 @@ export function LineupScorer({
             <PlayerPicker
               label="Taking the shot"
               value={shooter}
+              // The five on the floor are the only legal answers, so the search
+              // is restricted to them. Left unrestricted this offered the whole
+              // league and the API answered with a 400.
+              restrictTo
               fallback={offense
                 .map((id) => byId.get(id))
                 .filter((p): p is Player => p !== undefined)}

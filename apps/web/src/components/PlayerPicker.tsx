@@ -28,6 +28,13 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
  * 3. **It is a combobox, not a text box with a menu underneath.** Arrow keys,
  *    Enter, Escape, and `aria-activedescendant`, because a control that can
  *    only be operated with a mouse is not finished.
+ *
+ * `restrictTo` exists because the first version did not have it and was wrong.
+ * The shooter field is a picker over *the five on the floor*, and without it the
+ * component happily searched the whole league and let you select a shooter who
+ * was not in the lineup -- which the API then rejects with a 400. A control that
+ * offers an option the server will refuse is a broken control, not a strict
+ * server.
  */
 
 export type PickablePlayer = { id: number; name: string; attempts: number };
@@ -47,6 +54,7 @@ export function PlayerPicker({
   fallback,
   exclude = [],
   disabled = false,
+  restrictTo = false,
 }: {
   label: string;
   value: number;
@@ -56,6 +64,14 @@ export function PlayerPicker({
   /** Ids already used elsewhere in the same lineup. Shown, but not choosable. */
   exclude?: number[];
   disabled?: boolean;
+  /**
+   * Search only `fallback`, never the league.
+   *
+   * For the shooter field, where `fallback` *is* the set of legal answers: the
+   * five on the floor. Without this the picker searched all 766 players and
+   * would offer one the scoring endpoint rejects with a 400.
+   */
+  restrictTo?: boolean;
 }) {
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -77,7 +93,7 @@ export function PlayerPicker({
   }, [query, fallback]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || restrictTo) return;
     let cancelled = false;
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -106,9 +122,9 @@ export function PlayerPicker({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [query, open]);
+  }, [query, open, restrictTo]);
 
-  const options = offline || results.length === 0 ? localMatches : results;
+  const options = restrictTo || offline || results.length === 0 ? localMatches : results;
 
   useEffect(() => {
     if (active >= options.length) setActive(0);

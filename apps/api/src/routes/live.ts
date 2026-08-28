@@ -43,6 +43,9 @@ const TIER_ORDER: Record<"refused" | "directional" | "reportable", number> = {
   reportable: 2,
 };
 
+/** Rows `/players` returns when `limit` is absent or unparseable. */
+const DEFAULT_PLAYER_LIMIT = 50;
+
 const SEASONS = [
   { start_year: 2022, label: "2022-23" },
   { start_year: 2023, label: "2023-24" },
@@ -323,12 +326,30 @@ export function mountLive(app: App): void {
     try {
       const players = await loadPlayers(c.env);
       const query = (c.req.query("q") ?? "").trim().toLowerCase();
-      const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "50", 10) || 50, 500);
+
+      // Clamped into [0, 500] rather than only capped above.
+      //
+      // `Math.min(parseInt(x) || 50, 500)` looked like a cap and was not one:
+      // `limit=-5` parses to -5, which is truthy, so it survived the `|| 50` and
+      // the `Math.min`, and `slice(0, -5)` means "all but the last five" -- the
+      // whole 766-player roster, from a parameter whose entire job is to bound
+      // the response. A cap that a minus sign walks straight past is decoration.
+      const requested = Number.parseInt(c.req.query("limit") ?? "", 10);
+      const limit = Number.isFinite(requested)
+        ? Math.min(Math.max(requested, 0), 500)
+        : DEFAULT_PLAYER_LIMIT;
 
       const rows = Object.entries(players.players)
         .filter(([, row]) => !query || row.name.toLowerCase().includes(query))
         .map(([id, row]) => ({ player_id: id, ...row }))
-        .sort((a, b) => (b.possessions ?? 0) - (a.possessions ?? 0))
+        // Possessions descending, with the id as a total tiebreak. Two players
+        // on identical possession counts would otherwise order by whatever
+        // `Object.entries` happened to yield, which is the shape of bug this
+        // repository has already found in five other places.
+        .sort(
+          (a, b) =>
+            (b.possessions ?? 0) - (a.possessions ?? 0) || Number(a.player_id) - Number(b.player_id)
+        )
         .slice(0, limit);
 
       return c.json(

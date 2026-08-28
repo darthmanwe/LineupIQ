@@ -29,6 +29,30 @@ app.use("*", async (c, next) => {
   c.res.headers.set("X-Request-Id", requestId);
 });
 
+/**
+ * Redirect `/api/foo/` to `/api/foo`.
+ *
+ * Every *page* on this origin ends in a slash, because `output: "export"`
+ * emits directories -- so a visitor who has learned that convention types
+ * `/api/` and gets a 404 from the one endpoint whose whole job is
+ * discoverability. The 404 was at least informative (it names `/api` in a
+ * `registry` field), but two halves of one origin disagreeing about slashes is
+ * a papercut worth removing rather than documenting.
+ *
+ * 308 rather than 301: the method and body must survive, or a POST to
+ * `/api/lineups/compare/` would silently become a GET.
+ */
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    return c.redirect(url.toString(), 308);
+  }
+  await next();
+});
+
+mountLive(app);
+
 /** The registry itself. Describes the service, so it is backed today. */
 app.get("/", (c) =>
   c.json(
