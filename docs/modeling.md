@@ -1,8 +1,10 @@
 # Modelling notes
 
 Why the models are shaped the way they are, and what had to be corrected on the way.
-Numbers quoted here are reproduced by `lineupiq verify`, `lineupiq train` and
-`lineupiq selection` from committed gold.
+Numbers quoted here are reproduced by `lineupiq verify`, `lineupiq train`,
+`lineupiq selection` and `lineupiq parity` from committed gold. Where a claim is a
+property rather than a value, the test that enforces it is named instead, so the
+claim can be checked by running the suite rather than by trusting the prose.
 
 ---
 
@@ -150,6 +152,88 @@ and positive definite; and on random data, where every lineup coefficient is tru
 audit returns `indeterminate` rather than crediting whichever sign the noise produced. That
 last test is why the empty bucket here can be trusted as a finding rather than suspected as a
 bug.
+
+
+### A lineup has two knobs, and the test had eight
+
+Comparing two lineups needed an omnibus -- nine per-zone tests at 80% separate something on
+most comparisons, so a single Wald statistic has to front them. The obvious form is
+eight-dimensional: nine shares on a simplex, one dropped as the reference.
+
+That form is wrong, and the reason is visible in `SELECTION_TERMS` rather than in the data.
+Every lineup term is an interaction with a **zone attribute**, and there are only two of
+them:
+
+| Term | Multiplies |
+| --- | --- |
+| `spacing_x_three`, `spacing_min_x_three`, `opp_three_allowed_x_three` | `three[z]` |
+| `teammate_rim_x_rim`, `opp_rim_allowed_x_rim` | `rim[z]` |
+
+So a lineup's entire contribution to the nine utilities is `a·rim[z] + b·three[z]`. It can
+pull a shooter toward the rim and it can pull him toward the arc. It has no way at all to move
+mid-range baseline independently of mid-range wing, because nothing in the parameterisation
+connects it to either.
+
+The difference between two lineups therefore lies on a two-dimensional manifold, and its
+zone-level covariance is very nearly rank two.
+`test_the_zone_level_covariance_would_have_been_rank_deficient` pins that as a property: the
+top two eigenvalues carry **more than 99%** of the trace, the third sits **below a thousandth**
+of the first, and the condition number exceeds **1e4**. The residual directions are
+second-order leakage rather than exact zeros, which is precisely why the eight-dimensional
+version did not fail outright -- it returned a plausible number.
+
+**It was caught by the parity contract, not by a test of the statistic.** The Python and
+TypeScript statistics stopped agreeing to 1e-9 on one case out of ninety-eight. The tempting
+repair is a looser tolerance on that one number, and it would have worked. What it would have
+hidden is a Wald test spending six of its eight degrees of freedom inverting rounding error.
+
+Testing `(Δa, Δb)` directly is better conditioned, more interpretable, and **more powerful**:
+the critical value falls from 11.03 to 3.22 against an alternative that was always
+two-dimensional. `test_the_lineup_effect_really_is_two_dimensional` asserts the decomposition
+against the served scorer, so a sixth lineup term with a different zone structure fails the
+suite rather than silently invalidating the degrees of freedom.
+
+### The covariance is not the whole uncertainty
+
+A one-player swap moves three numbers -- `spacing`, `spacing_min`, `teammate_rim` -- and all
+three are built from the two players' own three-point and rim rates. Those are fitted
+quantities in the profile tables, and the twenty-by-twenty coefficient covariance says nothing
+about them.
+
+An interval drawn from the covariance alone would therefore be *technically correct about the
+wrong quantity*. The section above makes the point in the other direction: at 671,251 attempts
+against twenty parameters the smallest `|z|` in the model is 4.0, so the coefficients are
+known extraordinarily well -- and none of that precision is about whether this particular
+player shoots threes at 0.38 or 0.41.
+
+So the profile rates carry cluster-robust errors of their own, clustered on game, and the
+served variance is the sum of two terms. Pooled over the parity corpus the profile term is the
+large majority of it, and a model-only interval would have been narrower than the truth by a
+factor of about three -- both figures generated into the README's `results.comparison` block
+from `data/parity/compare.json` rather than typed. Both components ship per zone rather than
+being summed away.
+
+Two choices inside that estimator, both made the way the rest of this repository was:
+
+- **Clustered on game rather than on shot**, because shots within a game are not independent
+  draws. Measured, the clustered error is a median of 1.02x the binomial one, with a
+  10th-to-90th range of 0.85 to 1.17 -- so the correction is worth almost nothing on this
+  corpus, and `test_the_cluster_error_reduces_to_the_binomial_one_on_singleton_clusters`
+  pins the algebra that makes the two comparable at all. It is kept because that ratio is a measurement of this data and not a property of
+  the estimator, and the version that would have caught strong clustering is the one worth
+  having.
+- **A closed-form linearised sandwich rather than a bootstrap.** A cluster bootstrap would
+  give the same answer to within resampling noise and would need a seeded draw over a
+  population produced by `group_by` -- which is the exact bug shape found in five places
+  below. There is no RNG here, so there is nothing to pin.
+
+The one place the sandwich genuinely breaks is the proportion boundary: twelve players took no
+threes at all across a hundred games or more, so every cluster's influence is exactly zero and
+the estimator returns zero -- not because the rate is certain but because a variance estimated
+from observed variation has none to work with. Those get the Jeffreys-corrected binomial
+error, and **only** those: the binomial error exceeds the clustered one for 44% of players
+through ordinary sampling variation, so flooring everybody at it would not be a guard but a
+systematic inflation.
 
 ---
 

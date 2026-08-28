@@ -208,7 +208,7 @@ else is on the floor, then projects how a trade changes it.
 | Page                    | What it answers                                                                                                     |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Lineup Optimizer**    | **Live.** The shot-value surface by zone, plus a picker: choose any five players, see how that lineup moves a shooter's attempts between zones, and get the zones ranked with their intervals. Refusals render as refusals. |
-| **Trade Simulator**     | **Live.** The backtest under three minutes rules, with its underpowered verdict stated before its numbers.           |
+| **Trade Simulator**     | **Live.** Swap a player and see how it moves a shooter's shot mix, with an interval on the *difference* and a published split of what that interval is made of. Below it, the outcome projection that is withheld, and the backtest that says why. |
 | **Data Quality & Eval** | **Live.** All 12 gates with thresholds and verdicts, the selection ladder, RAPM reliability, and groundedness with both distractor controls. |
 | **Evidence / Comps**    | **Not built as a surface.** The retrieval *evaluation* is done and published at `/api/eval/retrieval` — three corpora ablated, per-retriever Recall@10 and nDCG@10, and a finding that BM25 alone beats the hybrid. The search UI needs a deployed index. |
 
@@ -600,6 +600,82 @@ Draymond Green leading defence. Nothing in the pipeline was fitted to produce th
 because a first version printed zeros and hid the one reserve whose +5.5 came off 8,098
 possessions against everyone else's 20,000-plus.
 
+## Comparing two lineups, and what the interval is actually made of
+
+`POST /api/lineups/compare` contrasts two five-man lineups for one shooter: the same closed
+form, evaluated twice, differenced. Either side can be the league-average lineup, which needs
+no roster — every lineup feature is a centred deviation from the league rate, so dropping all
+five *is* the average lineup.
+
+Three things about it are worth more than the feature.
+
+**The interval is not the model's alone, and on a typical comparison the model is the smaller
+half.** A one-player swap moves exactly three numbers — mean teammate spacing, the worst
+spacer on the floor, and teammate rim pressure — and all three are built from the two
+players' own shooting rates. The coefficient covariance says nothing about those. An interval
+drawn from it would be *technically correct about the wrong quantity*: 671,251 attempts is
+overwhelming evidence about twenty parameters and almost none about any particular pair of
+players. So the profile rates carry cluster-robust errors of their own, and the variance
+carries both terms:
+
+```
+Var = grad_theta' Sigma grad_theta  +  sum_k (d/d rate_k)^2 SE(rate_k)^2
+         the fitted model                 who these players are
+```
+
+<!-- lineupiq:begin id=results.comparison -->
+**What a comparison's interval is made of**, over 97 lineup pairs in the parity fixture.
+
+| | Value |
+|---|---|
+| Variance from the fitted coefficients | 9.6% |
+| Variance from the two players' shooting rates | **90.4%** |
+| Mean per-comparison profile share | 83.1% |
+| A model-only interval would have been too narrow by | 3.23x |
+
+The coefficients are known far better than any particular pair of players, and an interval drawn from the covariance alone would have been technically correct about the wrong quantity. Both components are returned per zone.
+
+**The omnibus** separates 79 of 97 pairs at a pre-registered critical value of 3.22, on two degrees of freedom -- a lineup can pull a shooter toward the rim and toward the arc, and it has no third way to move him.
+<!-- lineupiq:end id=results.comparison -->
+
+Both components are returned per zone and drawn on the page, because a reader shown only a
+total would reasonably assume the model was the whole story.
+
+Two notes on how those rate errors are estimated, both of which are choices this repository
+has been burned into making. They are clustered on **game**, because shots within a game are
+not independent draws — though measured, the clustered error turns out to be barely
+larger than the binomial one at the median, and that ratio is published in the estimator's
+own docstring rather than assumed. And they
+are a closed-form linearised sandwich rather than a bootstrap, because a cluster bootstrap
+would need a seeded draw over a population produced by `group_by`, and *a pinned seed over an
+unpinned ordering* is the bug this repository has already found in five separate places.
+
+**The omnibus has two degrees of freedom, and finding that out was the useful part.** Nine
+zones tested at 80% will separate something on most comparisons, so the headline is a single
+Wald test. The obvious form of it is eight-dimensional — nine shares on a simplex, one
+dropped as reference — and it is wrong. Every lineup term multiplies either the rim indicator
+or the three indicator, so a lineup's whole effect on the nine utilities is `a·rim + b·three`.
+A lineup has two knobs: it can pull a shooter toward the rim and it can pull him toward the
+arc. It cannot move mid-range baseline independently of mid-range wing, because nothing in
+the model connects it to either.
+
+The eight-dimensional version shipped first and was caught only when the Python and
+TypeScript statistics stopped agreeing to 1e-9 on one case in ninety-eight. The tempting
+repair was a looser tolerance. The actual fault was inverting a covariance whose top two
+eigenvalues carry over 99.9% of its trace, with a condition number in the millions — six of
+its eight directions were rounding error. Fixing the hypothesis fixed the conditioning and
+made the test more powerful at the same time, because the critical value for a
+two-dimensional alternative is far below the one for an eight-dimensional one. The
+concentration itself is asserted in `test_the_zone_level_covariance_would_have_been_rank_deficient`
+rather than quoted here.
+
+**It surfaces the contradicted pre-registration where it bites.** `spacing_x_three` came back
+negative against a predicted positive sign — the coefficient is in the sign-audit table above — and it is one of the three terms an offensive
+swap moves — so the first swap anyone tries shows a better spacer pulling the shooter *toward*
+the rim. The response returns each moved term with its pre-registered sign and verdict, and
+the page renders that beside the number rather than in a footnote. A finding that surprising
+looks like a bug unless it is labelled as the finding it is.
+
 ## The trade simulator, and its counterfactual backtest
 
 This is the milestone the original design document had no validation plan for. It makes one
@@ -858,7 +934,7 @@ including an arithmetic mistake in its headline formula and a contradiction abou
 | --- | --- |
 | Ingest, stint reconstruction, possession layer | 3 seasons, validated against box-score minutes and an independent lineup oracle |
 | Conversion model + selection model | Full baseline ladders, calibration, negative controls, leakage assertions |
-| Served scorer and play ranking | Live, closed-form, parity-proven to 1e-9 against the Python fit |
+| Served scorer, play ranking, lineup comparison | Live, closed-form, parity-proven to 1e-9 against the Python fit |
 | RAPM | Fitted on possessions, split-half reliability published, non-identified players named |
 | Trade backtest | Ran; its own power analysis says `UNDERPOWERED`, and the projection endpoint is withheld because of it |
 | Refusal contract | Pre-registered, hash-pinned, enforced by a sweep over every scoring route |
@@ -867,7 +943,7 @@ including an arithmetic mistake in its headline formula and a contradiction abou
 
 | Deliberately not built | Why |
 | --- | --- |
-| `POST /api/trades/simulate` | The backtest's minimum detectable effect is the same size as the effects it projects. Shipping a projection whose accuracy cannot be established is the failure this repository exists to avoid. |
+| `POST /api/trades/simulate` | The backtest's minimum detectable effect is the same size as the effects it projects. Shipping a projection whose accuracy cannot be established is the failure this repository exists to avoid. What *is* served is `POST /api/lineups/compare`, which answers a different question on the other model — how a swap moves shot **selection**, not whether it moves the scoreboard. |
 | `/api/leaderboards/gravity` | Needs player-tracking data. Returns `410`, not `501` — a client should stop asking. |
 | Live LLM narratives | The evaluation harness runs today against templated text. A language model has never been called by this repository, and the cache and judge-agreement labels are outstanding. |
 | Era weighting | Over three seasons the column would be constant. Shipping a weighting scheme driven by a constant column is the same category of overclaim as fabricating data. |

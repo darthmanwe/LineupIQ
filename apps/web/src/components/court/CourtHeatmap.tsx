@@ -83,6 +83,27 @@ export type MetricSpec = {
   /** Header for the count column. */
   countLabel: string;
   /**
+   * The two ends of the diverging legend.
+   *
+   * Hard-coded as "Below league" / "Above league" until the court was reused
+   * for a comparison between two *lineups*, where neither end is the league at
+   * all -- the legend said one thing and the caption underneath said another.
+   * A legend that contradicts its own caption is worse than no legend.
+   */
+  lowLabel: string;
+  highLabel: string;
+  /**
+   * The parenthetical in the hover readout: what this zone's value is being
+   * compared *to*.
+   *
+   * A function rather than a noun, because the honest phrasing differs in kind
+   * and not only in wording. The league surface has a real midpoint worth
+   * printing ("vs league 1.088"); a comparison between two chosen lineups has a
+   * midpoint of exactly zero, and "vs league 0.000" over it would be claiming a
+   * comparison that is not happening.
+   */
+  formatComparison: (value: ZoneValue, leagueValue: number) => string;
+  /**
    * The in-zone sample-size label, or `null` to print none.
    *
    * Not every metric has a per-zone sample size, and printing one that does not
@@ -113,6 +134,9 @@ export const POINTS_PER_ATTEMPT: MetricSpec = {
   formatSecondaryCell: (v) => `${(v.fg * 100).toFixed(1)}%`,
   countLabel: "Attempts",
   formatCount: (v) => `n=${v.attempts.toLocaleString()}`,
+  lowLabel: "Below league",
+  highLabel: "Above league",
+  formatComparison: (v, league) => `${formatSigned(v.deviation)} vs league ${league.toFixed(3)}`,
 };
 
 /**
@@ -139,6 +163,10 @@ export const ATTEMPT_SHARE: MetricSpec = {
   countLabel: "Possessions",
   // No per-zone count exists here. See `formatCount` on MetricSpec.
   formatCount: () => null,
+  lowLabel: "Fewer attempts",
+  highLabel: "More attempts",
+  formatComparison: (v) =>
+    `${v.deviation >= 0 ? "+" : "−"}${(Math.abs(v.deviation) * 100).toFixed(2)} pp vs a league-average lineup`,
 };
 
 export type CourtHeatmapProps = {
@@ -197,6 +225,13 @@ export function CourtHeatmap({
   const patternId = useId();
   const [hovered, setHovered] = useState<string | null>(null);
   const [showTable, setShowTable] = useState(false);
+
+  // Whether this metric prints a per-zone count at all. The hint promised one
+  // unconditionally, over a court whose spec returns null for every zone.
+  const promisesCounts = shapes.some((shape) => {
+    const value = values[shape.id];
+    return value !== undefined && metric.formatCount(value) !== null;
+  });
 
   const scaleDomain = useMemo(() => {
     if (domain && domain > 0) return domain;
@@ -345,7 +380,7 @@ export function CourtHeatmap({
       </svg>
 
       <div className="court__legend">
-        <span>Below league</span>
+        <span>{metric.lowLabel}</span>
         <span className="court__swatches">
           {[...ARMS.below].reverse().map((_, i) => (
             <span
@@ -363,7 +398,7 @@ export function CourtHeatmap({
             />
           ))}
         </span>
-        <span>Above league</span>
+        <span>{metric.highLabel}</span>
         {anyBelowFloor && (
           // Only when the hatch can actually fire. A legend entry for a mark
           // that never appears on the chart beside it is decoration, and it
@@ -396,13 +431,14 @@ export function CourtHeatmap({
           ) : (
             <>
               <strong>{activeShape.label}</strong> — {metric.formatValue(active)} (
-              {formatSigned(active.deviation)} vs league {leagueValue.toFixed(3)})
+              {metric.formatComparison(active, leagueValue)})
               {metric.formatSecondary(active) ? `, ${metric.formatSecondary(active)}` : ""}.
             </>
           )
         ) : (
           <span style={{ color: "var(--muted)" }}>
-            Hover or tab through a zone for its value and sample size.
+            Hover or tab through a zone for its value
+            {promisesCounts ? " and sample size" : ""}.
           </span>
         )}
       </div>

@@ -955,6 +955,14 @@ export function mountLive(app: App): void {
           // shooting rate at all, so they silently inherit the league rate --
           // and a comparison involving them comes back as exactly zero, which
           // reads like a finding and is a missing row.
+          //
+          // On the current snapshot this cannot fire: the profile floor is 20
+          // attempts and the support floor is 30 over the same corpus, so the
+          // gate above always catches these players first. That is measured
+          // rather than assumed -- `test_the_rate_floor_is_currently_shadowed`
+          // asserts the two floors have not diverged, and fails on the commit
+          // that makes this branch reachable. It stays because the alternative
+          // to an unreachable guard here is a confident zero.
           return problem(c, {
             status: 422,
             code: "NO_FITTED_RATE",
@@ -1027,9 +1035,12 @@ export function mountLive(app: App): void {
         (term) => term.verdict === "DISAGREES" && term.featureDelta !== 0
       );
       for (const term of contradicted) {
+        // No backticks: warnings are rendered verbatim by every client, and a
+        // markdown fence that nothing renders reads as a formatting bug rather
+        // than as emphasis.
         warnings.push(
-          `\`${term.term}\` moved this result and its pre-registered sign was ` +
-            "contradicted by the fit. The direction below is what the data says, not " +
+          `The term ${term.term} moved this result, and its pre-registered sign was ` +
+            "contradicted by the fit. The direction shown is what the data says, not " +
             "what the hypothesis predicted - see /api/models/selection."
         );
       }

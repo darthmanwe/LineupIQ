@@ -9,16 +9,37 @@
  *
  * The captures are chosen to show the parts a static page cannot argue for: a
  * real lineup scored with real magnitudes, the same tool refusing to size a
- * combination that has never played, and a ranking with its ties left tied.
+ * combination that has never played, a ranking with its ties left tied, a swap
+ * moving a coefficient against its own pre-registered sign, and the split that
+ * says most of an interval is the players rather than the model.
  *
  *   npm run capture            # against http://127.0.0.1:8788
  *   BASE=https://… npm run capture
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { chromium } from "playwright";
+
+/**
+ * Player names, so the pickers can be driven the way a person drives them.
+ *
+ * The five slots were native `<select>`s until `/trade` needed two lineups on
+ * one screen; they are comboboxes now, and `selectOption` by index no longer
+ * exists. Typing a name and clicking the matching option is both what a user
+ * does and a stronger check -- it exercises the search endpoint the picker is
+ * built on, so a capture run fails if that endpoint stops answering.
+ */
+const NAMES = JSON.parse(
+  await readFile(path.resolve("apps/web/public/data/players.json"), "utf8")
+).players;
+
+function nameOf(id) {
+  const row = NAMES[String(id)];
+  if (row === undefined) throw new Error(`no such player in the export: ${id}`);
+  return row.name;
+}
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:8788";
 const OUT = path.resolve("docs/media");
@@ -56,16 +77,33 @@ const COUNTERFACTUAL = {
   defense: [1628369, 1627759, 201950, 1628401, 204001],
 };
 
+/**
+ * Choose one player in the nth picker of a panel.
+ *
+ * The option is clicked by id rather than by visible text: two players can
+ * share a surname, and a substring click would take whichever the search
+ * happened to rank first. `#…-<playerId>` is exact.
+ */
+async function pickPlayer(page, panel, index, playerId) {
+  const field = panel.locator(".picker input").nth(index);
+  await field.click();
+  await field.fill("");
+  await field.type(nameOf(playerId), { delay: 12 });
+  const option = page.locator(`li[id$="-${playerId}"]`).first();
+  await option.waitFor({ state: "visible", timeout: 15000 });
+  await option.click();
+}
+
 async function pickLineup(page, { offense, shooter, defense }) {
-  const selects = page.locator(".scorer__panel").first().locator("select");
+  const panel = page.locator(".scorer__panel").first();
   for (let i = 0; i < offense.length; i += 1) {
-    await selects.nth(i).selectOption(String(offense[i]));
+    await pickPlayer(page, panel, i, offense[i]);
   }
   // Index 5 is the shooter, set after the five because it is repopulated from
   // whoever is on the floor. Indices 6..10 are the defence.
-  await selects.nth(5).selectOption(String(shooter));
+  await pickPlayer(page, panel, 5, shooter);
   for (let i = 0; i < defense.length; i += 1) {
-    await selects.nth(6 + i).selectOption(String(defense[i]));
+    await pickPlayer(page, panel, 6 + i, defense[i]);
   }
 }
 
@@ -128,6 +166,57 @@ const SHOTS = [
     },
   },
   {
+    name: "07-compare",
+    caption:
+      "A swap, priced in shot selection — with the contradicted pre-registration shown where it bites.",
+    async run(page) {
+      await page.goto(`${BASE}/trade/`, { waitUntil: "networkidle", timeout: 30000 });
+      const panel = page.locator(".compare__panel").first();
+      for (let i = 0; i < DENVER.offense.length; i += 1) {
+        await pickPlayer(page, panel, i, DENVER.offense[i]);
+      }
+      await pickPlayer(page, panel, 5, DENVER.shooter);
+      await page.getByRole("button", { name: /^another five$/i }).click();
+      // Set all five of the comparison slots explicitly, so the two lineups
+      // differ by exactly one player and the response carries a `swap`. The
+      // default right-hand five already differs in one slot; changing a second
+      // one without resetting it would silently make this a two-player trade,
+      // which is a different and much less legible question.
+      //
+      // Gordon out, a high-volume perimeter shooter in. This is the capture
+      // that shows `spacing_x_three` moving against its own pre-registered
+      // sign, which is the finding the whole page is organised around.
+      // The shooter's slot on the comparison side is deliberately locked -- he
+      // has to stay on both floors or the answer is a between-player comparison
+      // wearing a lineup-effect label -- so it is skipped rather than set.
+      const swapped = DENVER.offense.map((id) => (id === 203932 ? 1628369 : id));
+      for (let i = 0; i < swapped.length; i += 1) {
+        if (DENVER.offense[i] === DENVER.shooter) continue;
+        await pickPlayer(page, panel, 6 + i, swapped[i]);
+      }
+      await page.getByRole("button", { name: /^compare$/i }).click();
+      await page.waitForSelector(".compare__verdict", { timeout: 30000 });
+      await page.waitForTimeout(700);
+      await alignTop(page, ".compare__verdict", 24);
+    },
+  },
+  {
+    name: "08-variance-split",
+    caption: "Most of the interval is the players, not the model. Said out loud, not in a tooltip.",
+    async run(page) {
+      await page.goto(`${BASE}/trade/`, { waitUntil: "networkidle", timeout: 30000 });
+      const panel = page.locator(".compare__panel").first();
+      for (let i = 0; i < DENVER.offense.length; i += 1) {
+        await pickPlayer(page, panel, i, DENVER.offense[i]);
+      }
+      await pickPlayer(page, panel, 5, DENVER.shooter);
+      await page.getByRole("button", { name: /^compare$/i }).click();
+      await page.waitForSelector(".split", { timeout: 30000 });
+      await page.waitForTimeout(700);
+      await alignTop(page, ".split", 120);
+    },
+  },
+  {
     name: "04-home",
     caption: "The finding, stated up front.",
     async run(page) {
@@ -150,6 +239,9 @@ const SHOTS = [
     async run(page) {
       await page.goto(`${BASE}/trade/`, { waitUntil: "networkidle", timeout: 30000 });
       await page.waitForTimeout(800);
+      // Below the live comparison, which now sits above it: this capture is of
+      // the *withheld* projection and its power analysis, not of the tool.
+      await alignTop(page, ".verdict", 180);
     },
   },
 ];

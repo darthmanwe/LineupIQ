@@ -3,19 +3,32 @@
 import { useState } from "react";
 
 import evaluationData from "../../../public/data/evaluation.json";
+import playersData from "../../../public/data/players.json";
+import zonesData from "../../../public/data/zones.json";
+import { LineupCompare } from "@/components/LineupCompare";
+import type { ZoneShape } from "@/components/court/CourtHeatmap";
 
 /**
- * The Trade page.
+ * The Trade page, which now answers one question and refuses another.
  *
- * The minutes-rule selector is the point of this page. How much an arriving
- * player plays is a coaching decision nothing in this repository can observe, so
- * it is a **visible input** rather than a silent assumption — and watching the
- * answer move when you change it is the most honest thing here.
+ * **The part that is live.** Swapping a player changes where a shooter shoots,
+ * and the selection model can say how much with an interval on the difference.
+ * That is `POST /api/lineups/compare`, and it sits at the top because it is the
+ * thing a visitor can actually ask.
  *
- * What it toggles is a real backtest, run three times with three different rules
- * and committed. It is not a live simulator: `POST /api/trades/simulate` returns
- * `501`, and it is withheld on the power analysis rather than pending on missing
- * machinery. The projection runs; the sample cannot establish that it is right.
+ * **The part that is withheld, immediately below it.** Whether the swap makes
+ * the team *better* is a different estimand on a different model, and that one
+ * failed its own backtest: the minimum detectable effect is the size of the
+ * effects being projected, sign agreement is 49.3%, and the projection does not
+ * beat assuming no change. `POST /api/trades/simulate` returns `501` because of
+ * the table below, not because the machinery is missing.
+ *
+ * Putting them on one page in that order is the point. The refusal is a
+ * boundary rather than an absence, and a reader can see exactly where it falls.
+ *
+ * The minutes-rule selector still governs the backtest. How much an arriving
+ * player plays is a coaching decision nothing here can observe, so it is a
+ * visible input rather than a silent assumption.
  */
 
 type Arm = {
@@ -76,6 +89,23 @@ const RULES = [
 
 const runs = (evaluationData as unknown as { trade?: Record<string, Run> }).trade ?? {};
 
+const zones = zonesData as unknown as { zones: ZoneShape[]; viewBox: string };
+
+/**
+ * The pickable roster, ordered by recorded attempts.
+ *
+ * Capped, and the cap is a support decision rather than a performance one: the
+ * tail of this list is two-minute call-ups whose fitted shot mix is almost
+ * entirely prior, and a comparison between two of them would be a comparison of
+ * two priors. The API refuses them by name if they are asked for anyway.
+ */
+const PICKABLE = Object.entries(
+  (playersData as { players: Record<string, { name: string; attempts: number }> }).players
+)
+  .map(([id, p]) => ({ id: Number(id), name: p.name, attempts: p.attempts }))
+  .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name))
+  .slice(0, 240);
+
 export default function TradePage() {
   const [rule, setRule] = useState<string>("inherit");
   const run = runs[rule];
@@ -102,10 +132,21 @@ export default function TradePage() {
         .note strong { color: var(--text); }
       `}</style>
 
-      <h1>Trade projection, and whether it can be tested</h1>
+      <h1>What a swap changes, and what it cannot tell you</h1>
       <p className="lede">
-        A trade projection makes a falsifiable claim: this move changes the receiving team by that
-        much. Below is that claim checked against every mid-season move in three seasons.
+        Swap a player and two questions follow.{" "}
+        <strong>Where does this shooter shoot from now?</strong> — which the selection model
+        answers, with an interval on the difference. And <strong>is the team better?</strong> —
+        which this repository refuses to answer, for the reason set out further down.
+      </p>
+
+      <LineupCompare players={PICKABLE} shapes={zones.zones} viewBox={zones.viewBox} />
+
+      <h2>What this does not tell you</h2>
+      <p className="lede">
+        Everything above is about shot <em>selection</em>. Whether a move changes what the team
+        scores is a different claim on a different model, and it is the one checked here against
+        every mid-season move in three seasons.
       </p>
 
       <h2>The minutes rule is an input, not an assumption</h2>

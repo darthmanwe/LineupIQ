@@ -454,3 +454,49 @@ def test_every_standard_error_is_finite_and_non_negative(
             assert zone.variance_profiles >= 0.0
             assert zone.variance_coefficients >= 0.0
             assert zone.interval[0] <= zone.points_per_100 <= zone.interval[1]
+
+
+def test_the_rate_floor_is_currently_shadowed_by_the_support_floor(
+    profiles: dict[str, Any], model: dict[str, Any]
+) -> None:
+    """The unprofiled-player refusal cannot fire on this snapshot, and that is fine.
+
+    `min_profile_attempts` is 20 and the directional attempt floor is 30, over
+    the same corpus -- so every player the support contract is willing to say
+    anything about already has a fitted shooting rate, and the support gate
+    always fires first. Measured, not assumed: zero players in the current
+    export sit between the two.
+
+    The guard stays, and this test is why it can be trusted to stay correct
+    rather than quietly rot. It is defence against the two floors diverging --
+    raise the profile floor, or export a roster from a wider frame than the one
+    the profiles were fitted on, and this test fails on the same commit that
+    makes the guard reachable. Deleting the guard because "it never fires" would
+    then be exactly wrong.
+
+    What is not acceptable is the guard being absent: a player with no fitted
+    rate silently inherits the league rate, so the comparison returns exactly
+    0.000, which reads like a finding and is a missing row.
+    """
+    import json
+    import pathlib
+
+    from lineupiq.models.support import load_thresholds
+
+    thresholds = load_thresholds()
+    assert thresholds.comparison_min_profile_attempts <= thresholds.directional_attempts
+
+    players = json.loads((_ASSETS / "players.json").read_text(encoding="utf-8"))["players"]
+    exposed = sorted(
+        int(player_id)
+        for player_id, row in players.items()
+        if row["attempts"] >= thresholds.directional_attempts
+        and player_id not in profiles["player_three_rate"]
+    )
+    assert exposed == [], (
+        "These players clear the support floor but have no fitted shooting rate, so "
+        f"the comparison endpoint's NO_FITTED_RATE branch is now reachable: {exposed}. "
+        "That is not a bug -- it is the guard doing its job -- but the refusal is now "
+        "something a user can hit, and the docs that call it unreachable are stale."
+    )
+    assert pathlib.Path(_ASSETS / "players.json").exists()

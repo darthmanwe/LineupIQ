@@ -906,6 +906,76 @@ def _trade(ctx: RenderContext) -> str:
     return "\n".join(lines)
 
 
+def _comparison(ctx: RenderContext) -> str:
+    """What a lineup comparison's uncertainty is made of, and how the omnibus behaves.
+
+    Every number here is read out of the committed parity fixture rather than
+    recomputed, for the same reason the trade block reads its run log: the
+    fixture is what the TypeScript mirror is held to, so a figure taken from
+    anywhere else could drift from the one the Worker actually reproduces.
+
+    The headline is the variance split. A comparison between two lineups is
+    driven by the difference between two players' shooting rates, and the
+    coefficient covariance says nothing about those -- so the share of the
+    variance that comes from the profiles rather than the model is the number
+    that says whether the second term was worth carrying. If it were small, the
+    honest thing would be to say so and drop it.
+    """
+    import json as _json
+
+    fixture_path = ctx.paths.parity / "compare.json"
+    if not fixture_path.exists():
+        return "\n_No comparison parity fixture. Run `lineupiq parity` first._\n"
+
+    fixture = _json.loads(fixture_path.read_text(encoding="utf-8"))
+    cases = fixture["cases"]
+    scored = [c for c in cases if c.get("unprofiled") is None]
+    if not scored:
+        return "\n_The comparison fixture has no scored cases._\n"
+
+    profile_share = float(fixture["mean_profile_variance_share"])
+    separating = int(fixture["n_distinguishable"])
+    critical = float(fixture["comparison"]["omnibus_critical_value"])
+
+    # The per-zone split, pooled the same way the endpoint pools it.
+    coefficient_total = 0.0
+    profile_total = 0.0
+    for case in scored:
+        for zone in case["zones"]:
+            coefficient_total += float(zone["variance_coefficients"])
+            profile_total += float(zone["variance_profiles"])
+    pooled = profile_total / (profile_total + coefficient_total) if profile_total else 0.0
+
+    # How much wider the interval is for carrying the profile term. Variances
+    # add, so the width ratio is the square root of the inverse coefficient
+    # share -- the factor by which a model-only interval would have been too
+    # narrow.
+    widening = (1.0 / (1.0 - pooled)) ** 0.5 if 0.0 < pooled < 1.0 else float("nan")
+
+    lines = [
+        "",
+        "**What a comparison's interval is made of**, over "
+        f"{len(scored)} lineup pairs in the parity fixture.",
+        "",
+        "| | Value |",
+        "|---|---|",
+        f"| Variance from the fitted coefficients | {(1 - pooled) * 100:.1f}% |",
+        f"| Variance from the two players' shooting rates | **{pooled * 100:.1f}%** |",
+        f"| Mean per-comparison profile share | {profile_share * 100:.1f}% |",
+        f"| A model-only interval would have been too narrow by | {widening:.2f}x |",
+        "",
+        "The coefficients are known far better than any particular pair of players, and an "
+        "interval drawn from the covariance alone would have been technically correct about "
+        "the wrong quantity. Both components are returned per zone.",
+        "",
+        f"**The omnibus** separates {separating} of {len(scored)} pairs at a pre-registered "
+        f"critical value of {critical:.2f}, on two degrees of freedom -- a lineup can pull a "
+        "shooter toward the rim and toward the arc, and it has no third way to move him.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _retrieval(ctx: RenderContext) -> str:
     """The corpus ablation: does document design actually matter?"""
     run = _read_json(ctx.paths.runs / "retrieval" / "ablation.json")
@@ -1061,6 +1131,7 @@ RENDERERS = {
     "results.selection_ranking": _selection_ranking,
     "results.rapm": _rapm,
     "results.trade": _trade,
+    "results.comparison": _comparison,
     "results.retrieval": _retrieval,
     "results.groundedness": _groundedness,
     "results.dataquality": _data_quality,

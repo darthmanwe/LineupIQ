@@ -9,6 +9,7 @@ import {
   type ZoneValue,
 } from "@/components/court/CourtHeatmap";
 import { PlayRanking, type PlayRankingResponse } from "@/components/PlayRanking";
+import { PlayerPicker } from "@/components/PlayerPicker";
 
 /**
  * The counterfactual, made clickable.
@@ -31,6 +32,12 @@ import { PlayRanking, type PlayRankingResponse } from "@/components/PlayRanking"
  * 3. **Warnings from the envelope are shown, not summarised.** The API decides
  *    what is uncertain about an answer; a UI that reworded that would
  *    eventually disagree with it.
+ *
+ * The five slots were native `<select>`s carrying 240 options each until
+ * `/trade` needed two lineups on one screen. They share `PlayerPicker` now,
+ * which searches the live roster endpoint and prints each player's attempt
+ * count -- the number that decides whether the API will answer at all, put
+ * where it is visible before the refusal rather than after it.
  */
 
 type Player = { id: number; name: string; attempts: number };
@@ -192,27 +199,22 @@ export function LineupScorer({
     index: number,
     label: string
   ): React.ReactElement => (
-    <label key={`${label}-${index}`} className="scorer__slot">
-      <span className="scorer__slotlabel">{label}</span>
-      <select
-        value={ids[index] ?? 0}
-        onChange={(e) => {
-          const next = [...ids];
-          next[index] = Number(e.target.value);
-          setIds(next);
-          // Keep the shooter on the floor. Silently scoring a shooter who was
-          // just substituted out would answer a different question than the
-          // one on screen.
-          if (label === "Offence" && !next.includes(shooter)) setShooter(next[0] ?? 0);
-        }}
-      >
-        {players.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} ({p.attempts.toLocaleString()})
-          </option>
-        ))}
-      </select>
-    </label>
+    <PlayerPicker
+      key={`${label}-${index}`}
+      label={`${label} ${index + 1}`}
+      value={ids[index] ?? 0}
+      exclude={ids}
+      fallback={players}
+      onChange={(id) => {
+        const next = [...ids];
+        next[index] = id;
+        setIds(next);
+        // Keep the shooter on the floor. Silently scoring a shooter who was
+        // just substituted out would answer a different question than the
+        // one on screen.
+        if (label === "Offence" && !next.includes(shooter)) setShooter(next[0] ?? 0);
+      }}
+    />
   );
 
   const duplicated = new Set(offense).size !== offense.length;
@@ -248,16 +250,16 @@ export function LineupScorer({
           <h3>The five on the floor</h3>
           {[0, 1, 2, 3, 4].map((i) => slot(offense, setOffense, i, "Offence"))}
 
-          <label className="scorer__slot" style={{ marginTop: "0.75rem" }}>
-            <span className="scorer__slotlabel">Taking the shot</span>
-            <select value={shooter} onChange={(e) => setShooter(Number(e.target.value))}>
-              {offense.map((id) => (
-                <option key={id} value={id}>
-                  {byId.get(id)?.name ?? id}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div style={{ marginTop: "0.75rem" }}>
+            <PlayerPicker
+              label="Taking the shot"
+              value={shooter}
+              fallback={offense
+                .map((id) => byId.get(id))
+                .filter((p): p is Player => p !== undefined)}
+              onChange={setShooter}
+            />
+          </div>
 
           <div className="scorer__row">
             <label className="scorer__toggle">

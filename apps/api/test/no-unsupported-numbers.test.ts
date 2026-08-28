@@ -232,8 +232,10 @@ describe("a directional lineup keeps its direction and loses its magnitude", () 
         right: { preset: "league_average" },
       });
       if (response.status === 422) {
-        // A player with no fitted shooting rate at all. Refusing is correct and
-        // is asserted in its own test; there is no magnitude to check.
+        // Unreachable on the current snapshot -- the profile floor sits below
+        // the support floor, so the tier gate catches these lineups first --
+        // but asserted rather than assumed, because the day the two floors
+        // diverge this is the shape the answer takes.
         const refusal = (await response.json()) as { code: string };
         expect(refusal.code).toBe("NO_FITTED_RATE");
         continue;
