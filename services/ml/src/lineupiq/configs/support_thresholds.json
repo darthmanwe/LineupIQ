@@ -18,7 +18,48 @@
     "fixed before any ranking was computed, and before it was known whether any",
     "two zones would separate at all."
   ],
-  "version": 2,
+  "_comparison_comment": [
+    "ADDED at version 3, for the lineup-comparison endpoint. No floor above was",
+    "changed -- `test_the_floors_are_the_ones_the_arithmetic_implies` and",
+    "`test_the_ranking_thresholds_are_the_ones_pre_registered` assert every",
+    "earlier number by value, so the hash pin and those tests together",
+    "distinguish an addition from a loosening.",
+    "",
+    "`omnibus_critical_value` is chi-square(0.80, 2), computed with scipy and",
+    "pinned here rather than evaluated at request time.",
+    "",
+    "Two degrees of freedom, not eight. Every one of the five lineup terms",
+    "multiplies either the rim indicator or the three indicator and nothing",
+    "else, so a lineup's entire effect on the nine utilities is `a*rim +",
+    "b*three` -- a two-parameter family. The nine shares do live on an",
+    "eight-dimensional simplex, but a lineup has only two ways to move them.",
+    "",
+    "Measured rather than assumed: on the zone-level covariance of the",
+    "difference, the top two eigenvalues carry between 99.94% and 99.997% of",
+    "the trace across the parity corpus, the third is three to five orders",
+    "below the first, and the condition number runs from 3e4 to 1.3e6. The",
+    "residual directions are second-order leakage, not signal, so an",
+    "eight-dimensional Wald statistic spends six of its degrees of freedom",
+    "inverting rounding error. Testing the two parameters the model actually",
+    "has is better conditioned and more powerful against the alternative that",
+    "was always two-dimensional.",
+    "",
+    "A pre-registered critical value also means the Worker needs no incomplete",
+    "gamma function, which would have been the only special function in the",
+    "serving path.",
+    "",
+    "The omnibus exists because nine per-zone tests at 80% manufacture a false",
+    "positive on most comparisons. It is fixed at the same 80% as the ranking so",
+    "that the two mechanisms cannot be read against different standards.",
+    "",
+    "`min_profile_attempts` is the floor below which a player has no fitted",
+    "three-point or rim rate and silently inherits the league rate. Swapping such",
+    "a player in produces a delta of exactly zero for a reason invisible to the",
+    "caller, so the comparison refuses instead. It matches the floor the profile",
+    "fit already uses; it is written here so the serving contract does not depend",
+    "on a constant buried in the fitting code."
+  ],
+  "version": 3,
   "reportable": {
     "lineup_possessions": 200,
     "min_player_attempts": 100
@@ -37,5 +78,10 @@
   "ranking": {
     "confidence": 0.8,
     "min_zone_share": 0.01
+  },
+  "comparison": {
+    "omnibus_confidence": 0.8,
+    "omnibus_critical_value": 3.218875824868201,
+    "min_profile_attempts": 20
   }
 }

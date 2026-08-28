@@ -38,6 +38,23 @@ export type SelectionProfiles = {
   player_rim_rate: Record<string, number>;
   opp_three_allowed: Record<string, number>;
   opp_rim_allowed: Record<string, number>;
+  /**
+   * Cluster-robust standard errors on the four rate tables above, clustered on
+   * game.
+   *
+   * Only `compare.ts` reads them, and it refuses any player they do not cover.
+   * A comparison's answer is driven by the difference between two players'
+   * shooting rates, and the coefficient covariance says nothing about those —
+   * so serving a comparison without these would report a model interval as
+   * though it were the whole uncertainty.
+   *
+   * Optional on the type because a snapshot exported before they existed still
+   * scores lineups perfectly well; it just cannot compare them.
+   */
+  player_three_rate_se?: Record<string, number>;
+  player_rim_rate_se?: Record<string, number>;
+  opp_three_allowed_se?: Record<string, number>;
+  opp_rim_allowed_se?: Record<string, number>;
   league_three_rate: number;
   league_rim_rate: number;
   seconds_mean: number;
@@ -49,6 +66,25 @@ export type SelectionModel = {
   term_names: string[];
   coefficients: number[];
 };
+
+/**
+ * Per-table, per-player replacements for the four rate tables.
+ *
+ * This exists so `compare.ts` can differentiate the **served** scorer with
+ * respect to a player's shooting rate, exactly the way `plays.ts` already
+ * differentiates it with respect to a coefficient. The alternative — a
+ * hand-derived softmax gradient — would be a second implementation of the model
+ * that could drift from this one, and it would drift silently: a wrong gradient
+ * does not throw, it just makes every interval the wrong width.
+ *
+ * With no overrides the arithmetic is unchanged down to the last bit, which is
+ * why `data/parity/selection.json` is untouched by this parameter.
+ */
+export type RateOverrides = Partial<Record<RateTable, Record<string, number>>>;
+
+/** The four rate tables an override can address. */
+export type RateTable =
+  "player_three_rate" | "player_rim_rate" | "opp_three_allowed" | "opp_rim_allowed";
 
 export type ScoreRequest = {
   shooterId: number;
@@ -71,6 +107,17 @@ export type ScoreResult = {
   utilities: number[];
   shooterKnown: boolean;
   shooterWeight: number;
+  /**
+   * The five lineup features, in the order their coefficients appear in the
+   * term list: spacing, spacingMin, teammateRim, oppRim, oppThree.
+   *
+   * Every one is a centred deviation from the league rate, which is why
+   * dropping all five gives the league-average lineup. Exposed because
+   * `compare.ts` reports *which* of them a swap moved, and recomputing them
+   * there would be a second implementation of the aggregation — including the
+   * `min`, which is the one most likely to be got subtly wrong twice.
+   */
+  lineupFeatures: number[];
   /**
    * The shot-mix shift, priced in points per 100 attempts.
    *
@@ -105,20 +152,52 @@ function softmax(values: number[]): number[] {
  * and this has to match Python's left-to-right `sum()` exactly or the parity
  * fixture fails in the last few bits.
  */
-function meanRate(ids: number[], table: Record<string, number>, fallback: number): number {
+/**
+ * One player's rate, with an override taking precedence over the table.
+ *
+ * The fallback is the league rate, and it is why a player below the profile
+ * fit's attempt floor scores as exactly league-average rather than throwing.
+ * That is correct for scoring one lineup and wrong for comparing two, so
+ * `compare.ts` refuses such a player rather than serving the zero this would
+ * produce.
+ */
+function rateOf(
+  table: Record<string, number>,
+  overrides: Record<string, number> | undefined,
+  id: number,
+  fallback: number
+): number {
+  const key = String(id);
+  if (overrides !== undefined) {
+    const override = overrides[key];
+    if (override !== undefined) return override;
+  }
+  const value = table[key];
+  return value === undefined ? fallback : value;
+}
+
+function meanRate(
+  ids: number[],
+  table: Record<string, number>,
+  overrides: Record<string, number> | undefined,
+  fallback: number
+): number {
   let total = 0;
   for (const id of ids) {
-    const value = table[String(id)];
-    total += value === undefined ? fallback : value;
+    total += rateOf(table, overrides, id, fallback);
   }
   return total / ids.length;
 }
 
-function minRate(ids: number[], table: Record<string, number>, fallback: number): number {
+function minRate(
+  ids: number[],
+  table: Record<string, number>,
+  overrides: Record<string, number> | undefined,
+  fallback: number
+): number {
   let smallest = Infinity;
   for (const id of ids) {
-    const value = table[String(id)];
-    const rate = value === undefined ? fallback : value;
+    const rate = rateOf(table, overrides, id, fallback);
     if (rate < smallest) smallest = rate;
   }
   return smallest;
@@ -127,7 +206,8 @@ function minRate(ids: number[], table: Record<string, number>, fallback: number)
 export function scoreSelection(
   request: ScoreRequest,
   profiles: SelectionProfiles,
-  model: SelectionModel
+  model: SelectionModel,
+  rateOverrides?: RateOverrides
 ): ScoreResult {
   const { zones, rim, three } = profiles;
   const nZones = zones.length;
@@ -161,16 +241,32 @@ export function scoreSelection(
   let spacingMin = 0;
   let teammateRim = 0;
   if (teammates.length > 0) {
-    spacing = meanRate(teammates, profiles.player_three_rate, leagueThree) - leagueThree;
-    spacingMin = minRate(teammates, profiles.player_three_rate, leagueThree) - leagueThree;
-    teammateRim = meanRate(teammates, profiles.player_rim_rate, leagueRim) - leagueRim;
+    const threeOverride = rateOverrides?.player_three_rate;
+    const rimOverride = rateOverrides?.player_rim_rate;
+    spacing =
+      meanRate(teammates, profiles.player_three_rate, threeOverride, leagueThree) - leagueThree;
+    spacingMin =
+      minRate(teammates, profiles.player_three_rate, threeOverride, leagueThree) - leagueThree;
+    teammateRim = meanRate(teammates, profiles.player_rim_rate, rimOverride, leagueRim) - leagueRim;
   }
 
   let oppRim = 0;
   let oppThree = 0;
   if (request.defense.length > 0) {
-    oppRim = meanRate(request.defense, profiles.opp_rim_allowed, leagueRim) - leagueRim;
-    oppThree = meanRate(request.defense, profiles.opp_three_allowed, leagueThree) - leagueThree;
+    oppRim =
+      meanRate(
+        request.defense,
+        profiles.opp_rim_allowed,
+        rateOverrides?.opp_rim_allowed,
+        leagueRim
+      ) - leagueRim;
+    oppThree =
+      meanRate(
+        request.defense,
+        profiles.opp_three_allowed,
+        rateOverrides?.opp_three_allowed,
+        leagueThree
+      ) - leagueThree;
   }
 
   const seconds = request.secondsIntoPossession ?? profiles.seconds_mean;
@@ -227,6 +323,7 @@ export function scoreSelection(
     utilities: full,
     shooterKnown,
     shooterWeight,
+    lineupFeatures: [spacing, spacingMin, teammateRim, oppRim, oppThree],
     pointsPer100: 100 * points,
   };
 }

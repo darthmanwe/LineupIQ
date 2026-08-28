@@ -42,6 +42,7 @@
 
 import {
   scoreSelection,
+  type RateOverrides,
   type ScoreRequest,
   type SelectionModel,
   type SelectionProfiles,
@@ -70,6 +71,13 @@ export type SelectionModelWithCovariance = SelectionModel & {
   /** Row-major, in `term_names` order. Null before the model is refitted. */
   covariance: number[][] | null;
   ranking?: RankingContract | null;
+  /**
+   * The pre-registered sign audit, per term. Read only by `compare.ts`, which
+   * reports the verdict beside the feature a swap moved -- one of the three
+   * terms an offensive swap touches is the one whose predicted sign came back
+   * contradicted, and that belongs next to the number rather than in a footnote.
+   */
+  sign_audit?: Record<string, { expected_sign?: number | null; verdict?: string }> | null;
 };
 
 export type Play = {
@@ -110,17 +118,50 @@ export type PlayRanking = {
   tiesSpanningBands: number;
 };
 
+/**
+ * Per-zone difference in predicted shot share between two lineups.
+ *
+ * `right = null` means "the same shooter with every lineup term at the league
+ * average", which is `ScoreResult.baselineMix` and needs no second scoring
+ * call — every lineup term is a centred deviation, so dropping them *is* the
+ * league-average lineup.
+ *
+ * That is not a special case added for `compare.ts`: it is the quantity
+ * `rankPlays` has always ranked. Routing both through one function is what
+ * makes `compare(L, leagueAverage)` and `/lineups/score`'s per-zone `delta` the
+ * same number by construction rather than by two implementations agreeing.
+ */
+export function contrastShares(
+  left: ScoreRequest,
+  right: ScoreRequest | null,
+  profiles: SelectionProfiles,
+  model: SelectionModel,
+  coefficients: number[],
+  rateOverrides?: RateOverrides
+): number[] {
+  const scored = scoreSelection(left, profiles, { ...model, coefficients }, rateOverrides);
+  const reference =
+    right === null
+      ? scored.baselineMix
+      : scoreSelection(right, profiles, { ...model, coefficients }, rateOverrides).mix;
+  const out: number[] = [];
+  for (let z = 0; z < scored.zones.length; z += 1) {
+    out.push((scored.mix[z] as number) - (reference[z] as number));
+  }
+  return out;
+}
+
 function contributions(
   request: ScoreRequest,
   profiles: SelectionProfiles,
   model: SelectionModel,
   coefficients: number[]
 ): number[] {
-  const scored = scoreSelection(request, profiles, { ...model, coefficients });
+  const deltas = contrastShares(request, null, profiles, model, coefficients);
   const out: number[] = [];
-  for (let z = 0; z < scored.zones.length; z += 1) {
+  for (let z = 0; z < deltas.length; z += 1) {
     const points = profiles.zone_points[z] ?? 0;
-    out.push(100 * ((scored.mix[z] as number) - (scored.baselineMix[z] as number)) * points);
+    out.push(100 * (deltas[z] as number) * points);
   }
   return out;
 }
@@ -160,7 +201,7 @@ export function contributionGradients(
  * the same terms in the same order and floating-point addition is not
  * associative. This is the same reason `meanRate` in `selection.ts` is a loop.
  */
-function quadraticForm(left: number[], covariance: number[][], right: number[]): number {
+export function quadraticForm(left: number[], covariance: number[][], right: number[]): number {
   let total = 0;
   for (let i = 0; i < covariance.length; i += 1) {
     const row = covariance[i] as number[];
@@ -177,7 +218,7 @@ function quadraticForm(left: number[], covariance: number[][], right: number[]):
 // zero and the covariance is only numerically positive semi-definite. Clamping
 // at zero is right; `Math.abs` would turn a flat direction into a
 // confident-looking interval.
-function standardError(quadratic: number): number {
+export function standardError(quadratic: number): number {
   return quadratic > 0 ? Math.sqrt(quadratic) : 0;
 }
 

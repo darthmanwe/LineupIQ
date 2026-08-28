@@ -1052,11 +1052,13 @@ def parity(
 ) -> None:
     """Write the Python/TypeScript parity fixtures.
 
-    The Worker re-implements three things: the lineup hash, the support tier,
-    and the whole served selection model. None of the three raises on
-    disagreement -- a hash mismatch returns zero rows and looks like missing
-    data, a tier mismatch serves a confident number where Python would have
-    refused, and a scorer mismatch serves a plausible shot mix that is wrong.
+    The Worker re-implements four things: the lineup hash, the support tier,
+    the whole served selection model, and the comparison of two lineups. None of
+    them raises on disagreement -- a hash mismatch returns zero rows and looks
+    like missing data, a tier mismatch serves a confident number where Python
+    would have refused, a scorer mismatch serves a plausible shot mix that is
+    wrong, and a comparison mismatch serves an interval of the wrong width,
+    which is the one nobody can see at all.
 
     So Python writes its answers for a fixed sample and a vitest suite inside
     workerd asserts TypeScript reproduces them, to 1e-9. Neither implementation
@@ -1065,6 +1067,7 @@ def parity(
     from lineupiq.serve.parity import (
         FLOAT_TOLERANCE,
         check_fixtures,
+        write_compare_parity_fixture,
         write_parity_fixture,
         write_plays_parity_fixture,
         write_selection_parity_fixture,
@@ -1082,7 +1085,7 @@ def parity(
                 console.print(f"  … and {len(drifts) - 20} more")
             raise typer.Exit(code=1)
         console.print(
-            f"[green]All three fixtures reproduce.[/] [dim]Hashes and tiers exactly; "
+            f"[green]All four fixtures reproduce.[/] [dim]Hashes and tiers exactly; "
             f"floats to {FLOAT_TOLERANCE:g}.[/]"
         )
         return
@@ -1159,6 +1162,38 @@ def parity(
             "[yellow]The marginal intervals would have reached the same verdict on "
             "every pair.[/] That is the argument for shipping a 20x20 covariance "
             "rather than 20 standard errors, and here it did not pay for itself."
+        )
+
+    # The comparison's own fixture, and the one whose failure mode is quietest.
+    # A mirror that dropped the profile variance entirely would reproduce every
+    # delta, every share and every rank in `plays.json`; it would differ only in
+    # the interval widths. So this fixture stores the two variance components
+    # separately, and the refusals with the players they named.
+    compare_path = write_compare_parity_fixture(paths)
+    compared = _json.loads(compare_path.read_text(encoding="utf-8"))
+    comparison = Table(title="Lineup comparison parity", header_style="bold")
+    comparison.add_column("")
+    comparison.add_column("Value", justify="right")
+    comparison.add_row("Cases", f"{compared['n_cases']:,}")
+    comparison.add_row("Refused (no fitted rate)", f"{compared['n_refused']:,}")
+    comparison.add_row("Degenerate (no movement)", f"{compared['n_degenerate']:,}")
+    comparison.add_row("Omnibus separates", f"{compared['n_distinguishable']:,}")
+    comparison.add_row(
+        "Variance from player rates", f"{compared['mean_profile_variance_share']:.1%}"
+    )
+    console.print(comparison)
+    console.print(f"wrote [cyan]{compare_path}[/]")
+    if compared["n_degenerate"] == 0:
+        console.print(
+            "[yellow]No degenerate comparison in the sample.[/] Comparing a lineup "
+            "with itself must return exactly nothing, and that branch is the "
+            "serving equivalent of the backtest's placebo arm."
+        )
+    if compared["n_refused"] == 0:
+        console.print(
+            "[yellow]No refusal in the sample.[/] A player with no fitted rate "
+            "scores as exactly zero, which reads like a finding, so the branch "
+            "that refuses him is the one most worth pinning."
         )
 
 

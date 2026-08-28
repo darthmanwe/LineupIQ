@@ -175,3 +175,59 @@ def test_co_occurrence_report_is_order_independent(paths: DataPaths) -> None:
     assert keys[0] == keys[1] == keys[2]
     # And the flagged count itself, which feeds the README.
     assert len({report["n_flagged"] for report in reports}) == 1
+
+
+def test_cluster_robust_rate_errors_are_order_independent(paths: DataPaths) -> None:
+    """The newest artefact of this shape, pinned before it can go wrong.
+
+    These errors are a sum of squared per-game influences, taken over rows that
+    come out of a `group_by`. Float addition is not associative, so an unordered
+    aggregation is reproducible only on the machine that produced it -- which is
+    the property every other entry in this file was written after discovering.
+
+    The values are compared exactly rather than approximately. A tolerance here
+    would pass on precisely the last-bit drift the test exists to catch, and the
+    sums are over identical terms, so exact equality is what correct ordering
+    actually produces.
+    """
+    from lineupiq.models.selection import (
+        _THREE_ZONES,
+        _cluster_robust_rate_errors,
+    )
+
+    shots = load_all_gold(paths, "shot_facts")
+    results = [
+        _cluster_robust_rate_errors(variant, _THREE_ZONES, 20) for variant in _permutations(shots)
+    ]
+    assert results[0] == results[1] == results[2]
+    assert len(results[0]) > 0
+
+
+def test_the_cluster_error_reduces_to_the_binomial_one_on_singleton_clusters() -> None:
+    """The algebra, checked rather than asserted in a docstring.
+
+    With one shot per game every cluster is a single Bernoulli draw, and the
+    linearised sandwich collapses to `p(1-p)/(n-1)`. If it did not, the
+    estimator would be measuring something other than what its name says, and no
+    other test in the suite would notice -- a standard error that is wrong by a
+    constant factor still looks exactly like a standard error.
+    """
+    import math
+
+    import polars as pl
+
+    from lineupiq.models.selection import _THREE_ZONES, _cluster_robust_rate_errors
+
+    n, threes = 200, 60
+    zones = ["top_three"] * threes + ["restricted_area"] * (n - threes)
+    frame = pl.DataFrame(
+        {
+            "shooter_id": [7] * n,
+            "game_id": [f"g{i:04d}" for i in range(n)],
+            "zone_id": zones,
+        }
+    )
+    observed = _cluster_robust_rate_errors(frame, _THREE_ZONES, 20)[7]
+    rate = threes / n
+    expected = math.sqrt(rate * (1.0 - rate) / (n - 1))
+    assert observed == pytest.approx(expected, rel=1e-12)

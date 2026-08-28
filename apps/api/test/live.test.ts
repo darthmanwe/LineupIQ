@@ -89,6 +89,16 @@ function reportableLineup(): number[] {
   return found.players;
 }
 
+/** The weakest lineup in the fixture: the tier the refusal contract exists for. */
+function refusedLineup(): number[] {
+  const fixture = lineupFixtureJson as unknown as {
+    cases: Array<{ players: number[]; tier: string }>;
+  };
+  const found = fixture.cases.find((c) => c.tier === "refused");
+  if (found === undefined) throw new Error("no refused lineup in the parity fixture");
+  return found.players;
+}
+
 function highVolumePlayers(count: number): number[] {
   const players = playersJson as unknown as {
     players: Record<string, { attempts: number }>;
@@ -460,6 +470,196 @@ describe("ranking the plays a lineup creates", () => {
       offense: four,
     });
     expect(response.status).toBe(400);
+  });
+});
+
+describe("comparing two lineups", () => {
+  it("compares a five against the league average and agrees with /lineups/score", async () => {
+    // The two endpoints publish the same quantity here -- `mix - baselineMix`
+    // per zone -- and they are routed through one function so they cannot
+    // drift. This is the assertion that would notice if anybody un-routed it.
+    const five = highVolumePlayers(5);
+    const body = {
+      shooter_id: five[0],
+      left: { offense: five, defense: [] },
+      right: { preset: "league_average" },
+    };
+    const [compared, scored] = await Promise.all([
+      post("/api/lineups/compare", body),
+      post("/api/lineups/score", { shooter_id: five[0], offense: five, defense: [] }),
+    ]);
+    expect(compared.status).toBe(200);
+    expect(scored.status).toBe(200);
+
+    const comparison = (await compared.json()) as {
+      data: {
+        reference: string;
+        right_hash: string | null;
+        swap: unknown;
+        omnibus: { degrees_of_freedom: number; rim_shift: number; three_shift: number };
+        zones: Array<{ zone_id: string; delta_share: number }>;
+      };
+      meta: { comparison: { profile_variance_share: number; parity_fixture: string } };
+    };
+    const score = (await scored.json()) as {
+      data: { zones: Array<{ zone_id: string; delta: number }> };
+    };
+
+    expect(comparison.data.reference).toBe("league_average");
+    expect(comparison.data.right_hash).toBeNull();
+    expect(comparison.data.swap).toBeNull();
+    expect(comparison.data.omnibus.degrees_of_freedom).toBe(2);
+    expect(comparison.meta.comparison.parity_fixture).toBe("data/parity/compare.json");
+
+    for (let i = 0; i < score.data.zones.length; i += 1) {
+      const a = comparison.data.zones[i] as { zone_id: string; delta_share: number };
+      const b = score.data.zones[i] as { zone_id: string; delta: number };
+      expect(a.zone_id).toBe(b.zone_id);
+      expect(a.delta_share).toBe(b.delta);
+    }
+  });
+
+  it("names the one player that changed", async () => {
+    const pool = highVolumePlayers(6);
+    const left = pool.slice(0, 5);
+    const right = [...pool.slice(0, 4), pool[5] as number];
+    const response = await post("/api/lineups/compare", {
+      shooter_id: left[0],
+      left: { offense: left, defense: [] },
+      right: { offense: right, defense: [] },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { swap: { out: string; in: string } | null; reference: string };
+    };
+    expect(body.data.reference).toBe("lineup");
+    expect(body.data.swap).toEqual({ out: String(pool[4]), in: String(pool[5]) });
+  });
+
+  it("returns exactly nothing when a lineup is compared with itself", async () => {
+    // The placebo identity, served. The trade backtest requires a player
+    // swapped for himself to project exactly +0.000 on the grounds that a
+    // placebo which drifts means the pipeline is broken; the same standard
+    // applies to the same idea at request time.
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/compare", {
+      shooter_id: five[0],
+      left: { offense: five, defense: [] },
+      right: { offense: five, defense: [] },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: {
+        omnibus: { degenerate: boolean; distinguishable: boolean; statistic: number };
+        zones: Array<{ delta_share: number; standard_error: number }>;
+      };
+      meta: { warnings: string[] };
+    };
+    expect(body.data.omnibus.degenerate).toBe(true);
+    expect(body.data.omnibus.distinguishable).toBe(false);
+    for (const zone of body.data.zones) {
+      expect(zone.delta_share).toBe(0);
+      expect(zone.standard_error).toBe(0);
+    }
+    expect(body.meta.warnings.join(" ")).toMatch(/nothing to test/i);
+  });
+
+  it("refuses a shooter who is not on both floors", async () => {
+    // Swapping the shooter himself changes `shooter_mix`, whose coefficient is
+    // 0.996 at z = 351. It would swamp the five lineup terms completely, and the
+    // result would be a between-player comparison wearing a lineup-effect
+    // label. That is a 400, not a caveat.
+    const pool = highVolumePlayers(6);
+    const response = await post("/api/lineups/compare", {
+      shooter_id: pool[4],
+      left: { offense: pool.slice(0, 5), defense: [] },
+      right: { offense: [...pool.slice(0, 4), pool[5] as number], defense: [] },
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { code: string; detail: string };
+    expect(body.code).toBe("INVALID_REQUEST");
+    expect(body.detail).toMatch(/right/i);
+  });
+
+  it("lets the weaker of the two lineups govern the tier", async () => {
+    // A difference cannot be better supported than the lineups it is a
+    // difference of. Taking the stronger side would let a well-evidenced lineup
+    // launder a claim about one nobody has ever seen.
+    const strong = highVolumePlayers(5);
+    const weak = refusedLineup();
+
+    const response = await post("/api/lineups/compare", {
+      shooter_id: strong[0],
+      left: { offense: strong, defense: [] },
+      right: { offense: [strong[0] as number, ...weak.slice(0, 4)], defense: [] },
+    });
+    // Either the support gate or the fitted-rate gate fires; both are 422 and
+    // both name what is missing. What must not happen is a 200.
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { code: string; what_would_help?: string };
+    expect(["INSUFFICIENT_SUPPORT", "NO_FITTED_RATE"]).toContain(body.code);
+  });
+
+  it("publishes both variance components and says which one dominates", async () => {
+    // The endpoint's central claim: most of a comparison's uncertainty is about
+    // who these players are, not about the fitted model. If this ever collapsed
+    // the intervals would have quietly become model-only again.
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/compare", {
+      shooter_id: five[0],
+      left: { offense: five, defense: [] },
+      right: { preset: "league_average" },
+    });
+    const body = (await response.json()) as {
+      data: {
+        zones: Array<{ variance_share: { coefficients: number; profiles: number } }>;
+      };
+      meta: { comparison: { profile_variance_share: number } };
+    };
+    expect(body.meta.comparison.profile_variance_share).toBeGreaterThan(0);
+    expect(body.meta.comparison.profile_variance_share).toBeLessThanOrEqual(1);
+    for (const zone of body.data.zones) {
+      expect(zone.variance_share.profiles).toBeGreaterThanOrEqual(0);
+      expect(zone.variance_share.coefficients).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("reports the mechanism, including the contradicted pre-registered sign", async () => {
+    const pool = highVolumePlayers(6);
+    const response = await post("/api/lineups/compare", {
+      shooter_id: pool[0],
+      left: { offense: pool.slice(0, 5), defense: [] },
+      right: { offense: [...pool.slice(0, 4), pool[5] as number], defense: [] },
+    });
+    const body = (await response.json()) as {
+      data: {
+        mechanism: Array<{
+          term: string;
+          feature_delta: number;
+          expected_sign: number | null;
+          verdict: string;
+        }>;
+      };
+    };
+    const spacing = body.data.mechanism.find((m) => m.term === "spacing_x_three");
+    expect(spacing).toBeDefined();
+    expect(spacing?.verdict).toBe("DISAGREES");
+    expect(spacing?.expected_sign).toBe(1);
+    // An offensive-only swap cannot move the opponent terms.
+    const opponent = body.data.mechanism.find((m) => m.term === "opp_rim_allowed_x_rim");
+    expect(opponent?.feature_delta).toBe(0);
+  });
+
+  it("rejects a malformed reference", async () => {
+    const five = highVolumePlayers(5);
+    const response = await post("/api/lineups/compare", {
+      shooter_id: five[0],
+      left: { offense: five, defense: [] },
+      right: { preset: "best_available" },
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { detail: string };
+    expect(body.detail).toMatch(/league_average/);
   });
 });
 

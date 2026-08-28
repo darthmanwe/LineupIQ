@@ -59,6 +59,19 @@ class SupportThresholds:
     #: near zero by construction, and including it would fill the tail of
     #: every ranking with noise that happens to be ordered.
     ranking_min_zone_share: float
+    #: Confidence level for the omnibus test that fronts a lineup comparison:
+    #: did the shot mix move *at all*, before any per-zone number is read.
+    comparison_omnibus_confidence: float
+    #: Pre-registered chi-square critical value at that confidence on **two**
+    #: degrees of freedom: every lineup term multiplies either the rim or the
+    #: three indicator, so a lineup's whole effect is `a*rim + b*three` and it
+    #: has exactly two parameters. Pinned rather than evaluated so the serving
+    #: path needs no incomplete gamma function.
+    comparison_omnibus_critical_value: float
+    #: A player below this many recorded attempts has no fitted three-point or
+    #: rim rate and silently inherits the league rate, so comparing a lineup
+    #: containing him would report exactly zero for an invisible reason.
+    comparison_min_profile_attempts: int
 
 
 @lru_cache(maxsize=1)
@@ -78,6 +91,9 @@ def load_thresholds(path: Path | None = None) -> SupportThresholds:
         min_reportable_minutes_share=raw["trade"]["min_reportable_minutes_share"],
         ranking_confidence=raw["ranking"]["confidence"],
         ranking_min_zone_share=raw["ranking"]["min_zone_share"],
+        comparison_omnibus_confidence=raw["comparison"]["omnibus_confidence"],
+        comparison_omnibus_critical_value=raw["comparison"]["omnibus_critical_value"],
+        comparison_min_profile_attempts=raw["comparison"]["min_profile_attempts"],
     )
 
 

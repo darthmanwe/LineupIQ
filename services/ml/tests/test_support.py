@@ -30,13 +30,16 @@ from lineupiq.models.support import (
 #: true and has to come out -- or the file was reformatted, in which case
 #: reformatting a pre-registered artefact is itself worth a second look.
 #:
-#: **Changed once, at version 2**, to add the `ranking` block for
-#: `/lineups/optimal-plays`. That is an addition, not a loosening, and the
-#: difference between those two is the whole value of the pin -- so it is not
-#: left to a commit message. `test_the_floors_are_the_ones_the_arithmetic_implies`
-#: asserts every version-1 number *by value*, so the hash catches any edit and
-#: that test catches the specific edit that would matter. A future diff that
-#: lowers the possession floor and updates this constant still fails.
+#: **Changed twice.** At version 2 to add the `ranking` block for
+#: `/lineups/optimal-plays`, and at version 3 to add the `comparison` block for
+#: `/lineups/compare`. Both are additions, not loosenings, and the difference
+#: between those two is the whole value of the pin -- so it is not left to a
+#: commit message. Every earlier number is asserted *by value* by
+#: `test_the_floors_are_the_ones_the_arithmetic_implies` (version 1) and
+#: `test_the_ranking_confidence_was_fixed_before_any_ranking_existed`
+#: (version 2), so the hash catches any edit and those tests catch the specific
+#: edit that would matter. A future diff that lowers the possession floor and
+#: updates this constant still fails.
 #:
 #: The digest is taken over **LF-normalised** bytes. Rewriting the file from
 #: Windows put CRLF in the working copy while `.gitattributes` kept LF in the
@@ -45,7 +48,7 @@ from lineupiq.models.support import (
 #: nothing to do with the thresholds. A pin that a line-ending change can break
 #: is a pin whose obvious repair is to edit the constant, and the constant is
 #: the claim.
-PRE_REGISTERED_SHA256 = "1fa7d8e5d8337a0efa84b5a85b8a9f9329329a81a0841874f23c8354c4caf80b"
+PRE_REGISTERED_SHA256 = "2ff4b3f2bbb0243271b1aaf7e098fa53d6cc8b76d85420bb49db083d4d938f1c"
 
 
 def test_the_pin_survives_a_line_ending_change(tmp_path: object) -> None:
@@ -124,6 +127,38 @@ def test_the_ranking_confidence_was_fixed_before_any_ranking_existed() -> None:
     thresholds = load_thresholds()
     assert thresholds.ranking_confidence == 0.8
     assert thresholds.ranking_min_zone_share == 0.01
+
+
+def test_the_comparison_thresholds_were_fixed_before_any_comparison_existed() -> None:
+    """Version 3, pinned by value for the same reason version 2 is.
+
+    The critical value is the one number here a reader cannot check by eye, so
+    it is re-derived rather than asserted against itself: chi-square at 80% on
+    **two** degrees of freedom.
+
+    Two, not eight, and the difference is not a detail. Every lineup term in the
+    selection model multiplies either the rim indicator or the three indicator,
+    so a lineup's whole effect on the nine utilities is `a*rim + b*three` and it
+    has exactly two parameters. The nine shares do live on an eight-dimensional
+    simplex, but a lineup cannot move them in eight independent directions --
+    the eight-by-eight covariance of the difference is structurally rank two,
+    and inverting it inverts six directions of rounding error.
+    `test_the_lineup_effect_really_is_two_dimensional` pins the decomposition
+    itself, so a sixth term with a different zone structure fails there rather
+    than silently invalidating this number.
+
+    scipy is imported inside the test rather than at module scope: the point is
+    to confirm the committed constant against an independent computation, and a
+    constant that is only ever compared to itself is not pinned to anything.
+    """
+    from scipy import stats
+
+    thresholds = load_thresholds()
+    assert thresholds.comparison_omnibus_confidence == 0.8
+    assert thresholds.comparison_min_profile_attempts == 20
+
+    expected = float(stats.chi2.ppf(thresholds.comparison_omnibus_confidence, 2))
+    assert abs(thresholds.comparison_omnibus_critical_value - expected) < 1e-12
 
 
 def _table(possessions: int, attempts: int, lineup: list[int]) -> dict[str, tuple[int, int]]:

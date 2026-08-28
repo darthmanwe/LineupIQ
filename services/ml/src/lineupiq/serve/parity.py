@@ -465,8 +465,251 @@ def write_plays_parity_fixture(paths: DataPaths) -> Path:
     return path
 
 
+#: How many random lineup pairs the comparison fixture scores.
+#:
+#: Smaller than the scoring corpus because each case runs a gradient sweep over
+#: twenty coefficients *and* one per distinct player rate -- roughly two hundred
+#: scorer calls against a scoring case's one. Ninety is enough to cover the
+#: branches; the hand-built pairs below cover the ones that matter.
+N_COMPARE_CASES = 90
+
+
+def _compare_pairs(profiles: dict[str, Any]) -> list[tuple[str, Any, Any]]:
+    """The lineup pairs the comparison fixture scores, as ``(label, left, right)``.
+
+    ``right=None`` is the league-average arm, and it is not a special case bolted
+    on: it is the quantity ``/lineups/score`` already publishes per zone, routed
+    through the same function so the two cannot drift.
+
+    The hand-built pairs come first and in a fixed order, each one a branch a
+    random draw would not reliably hit:
+
+    - the league-average arm itself,
+    - a lineup against itself, which must return exactly zero with exactly zero
+      variance and a degenerate omnibus -- the placebo identity,
+    - a one-player swap, which is the shape the product actually serves,
+    - a swap that changes *which* teammate is the worst spacer, so the ``min`` in
+      ``spacing_min`` moves its argmin rather than only its value,
+    - a change of defence only, so both offensive terms are exactly zero and the
+      two opponent terms carry the whole difference,
+    - two entirely different fives, where every lineup term moves at once,
+    - a swap bringing in a player with no fitted rate, which must refuse rather
+      than return the zero the league fallback would produce.
+
+    Only players carrying both a rate and a standard error are drawn, because
+    those are the only ones the endpoint will score at all.
+    """
+    from lineupiq.serve.score import ScoreRequest
+
+    rated = sorted(
+        int(k)
+        for k in profiles["player_three_rate"]
+        if k in profiles["player_three_rate_se"] and k in profiles["player_rim_rate_se"]
+    )
+    defenders = sorted(
+        int(k) for k in profiles["opp_three_allowed"] if k in profiles["opp_three_allowed_se"]
+    )
+    unrated = sorted(
+        int(k) for k in profiles["shooter_log_ratio"] if k not in profiles["player_three_rate"]
+    )
+    rng = np.random.default_rng(SEED)
+
+    shooter = rated[0]
+    base = (shooter, *rated[1:5])
+    defence = tuple(defenders[:5])
+
+    # The teammate in `base` with the lowest three-point rate, and a replacement
+    # below him. Swapping this one moves the argmin of `spacing_min` rather than
+    # only its value, which is the branch where the finite difference is taken
+    # across the kink of a `min`.
+    rates = {p: float(profiles["player_three_rate"][str(p)]) for p in base[1:]}
+    worst = min(rates, key=lambda p: (rates[p], p))
+    lower = [p for p in rated if float(profiles["player_three_rate"][str(p)]) < rates[worst]]
+    argmin_mover = lower[0] if lower else rated[6]
+
+    pairs: list[tuple[str, Any, Any]] = [
+        ("league_average", ScoreRequest(shooter, base, defence), None),
+        ("identity", ScoreRequest(shooter, base, defence), ScoreRequest(shooter, base, defence)),
+        (
+            "one_player_swap",
+            ScoreRequest(shooter, base, defence),
+            ScoreRequest(shooter, (*base[:4], rated[7]), defence),
+        ),
+        (
+            "argmin_moves",
+            ScoreRequest(shooter, base, defence),
+            ScoreRequest(shooter, (*(p for p in base if p != worst), argmin_mover), defence),
+        ),
+        (
+            "defence_only",
+            ScoreRequest(shooter, base, defence),
+            ScoreRequest(shooter, base, tuple(defenders[5:10])),
+        ),
+        (
+            "disjoint_fives",
+            ScoreRequest(shooter, base, defence),
+            ScoreRequest(shooter, (shooter, *rated[20:24]), defence),
+        ),
+        (
+            "no_defence",
+            ScoreRequest(shooter, base, ()),
+            ScoreRequest(shooter, (*base[:4], rated[9]), ()),
+        ),
+        (
+            "unprofiled_swap_in",
+            ScoreRequest(shooter, base, defence),
+            ScoreRequest(shooter, (*base[:4], unrated[0]), defence),
+        ),
+    ]
+
+    for _ in range(N_COMPARE_CASES):
+        picked = [int(rated[i]) for i in rng.choice(len(rated), size=9, replace=False)]
+        common = tuple(picked[:4])
+        opponents = tuple(
+            int(defenders[i]) for i in rng.choice(len(defenders), size=5, replace=False)
+        )
+        pairs.append(
+            (
+                "random",
+                ScoreRequest(common[0], (*common, picked[4]), opponents),
+                ScoreRequest(common[0], (*common, picked[5]), opponents),
+            )
+        )
+    return pairs
+
+
+def build_compare_parity_fixture(paths: DataPaths) -> dict[str, Any]:
+    """Compare a sample of lineup pairs, storing both variance components.
+
+    The two components are stored **separately** rather than only their sum, and
+    that is the point of the fixture rather than a detail of it. A TypeScript
+    mirror that dropped the profile term entirely would still agree on every
+    delta, every share and every rank; it would disagree only on the interval
+    widths, and only by the third or so that the profile term is worth. Storing
+    the split makes such a mirror fail on the component instead of passing on a
+    plausible-looking total.
+
+    Refusals are stored too, with the players they named. A mirror that silently
+    scored an unprofiled player would otherwise look correct, because the number
+    it produced would be exactly zero -- which is also what a real "this swap
+    changes nothing" answer looks like.
+    """
+    from lineupiq.serve.compare import UnprofiledPlayerError, compare_lineups
+    from lineupiq.serve.export import export_selection_model, export_selection_profiles
+
+    profiles = export_selection_profiles(paths)
+    model = export_selection_model(paths)
+    if not model.get("available"):
+        raise RuntimeError("no selection run log committed; run `lineupiq selection` first")
+    if model.get("covariance") is None:
+        raise RuntimeError(
+            "the committed selection run log has no covariance matrix; "
+            "re-run `lineupiq selection` and `lineupiq export`"
+        )
+
+    # Read from the exported model rather than rebuilt from the thresholds, so
+    # the fixture pins what the Worker will actually be handed.
+    exported = model["comparison"]
+    comparison_contract = {
+        "confidence": exported["confidence"],
+        "critical_value": exported["critical_value"],
+        "omnibus_critical_value": exported["omnibus_critical_value"],
+    }
+
+    def _serialise(request: Any) -> dict[str, Any] | None:
+        if request is None:
+            return None
+        return {
+            "shooter_id": request.shooter_id,
+            "offense": list(request.offense),
+            "defense": list(request.defense),
+            "team_id": request.team_id,
+            "season": request.season,
+            "seconds_into_possession": request.seconds_into_possession,
+            "live_ball": request.live_ball,
+            "second_chance": request.second_chance,
+            "clutch": request.clutch,
+        }
+
+    cases: list[dict[str, Any]] = []
+    for label, left, right in _compare_pairs(profiles):
+        case: dict[str, Any] = {
+            "label": label,
+            "left": _serialise(left),
+            "right": _serialise(right),
+        }
+        try:
+            result = compare_lineups(left, right, profiles, model, **comparison_contract)
+        except UnprofiledPlayerError as refused:
+            case["unprofiled"] = list(refused.players)
+            cases.append(case)
+            continue
+        case["unprofiled"] = None
+        case["omnibus"] = {
+            "statistic": result.omnibus.statistic,
+            "degrees_of_freedom": result.omnibus.degrees_of_freedom,
+            "distinguishable": result.omnibus.distinguishable,
+            "degenerate": result.omnibus.degenerate,
+            "rim_shift": result.omnibus.rim_shift,
+            "three_shift": result.omnibus.three_shift,
+            "rim_shift_error": result.omnibus.rim_shift_error,
+            "three_shift_error": result.omnibus.three_shift_error,
+        }
+        case["profile_variance_share"] = result.profile_variance_share
+        case["argmin_unstable"] = result.argmin_unstable
+        case["zones"] = [
+            {
+                "zone": zone.zone,
+                "delta_share": zone.delta_share,
+                "points_per_100": zone.points_per_100,
+                "standard_error": zone.standard_error,
+                "variance_coefficients": zone.variance_coefficients,
+                "variance_profiles": zone.variance_profiles,
+            }
+            for zone in result.zones
+        ]
+        case["mechanism"] = [
+            {
+                "term": term.term,
+                "feature_delta": term.feature_delta,
+                "coefficient": term.coefficient,
+                "verdict": term.verdict,
+            }
+            for term in result.mechanism
+        ]
+        cases.append(case)
+
+    scored = [c for c in cases if c["unprofiled"] is None]
+    shares = [c["profile_variance_share"] for c in scored]
+    return {
+        "seed": SEED,
+        "zones": list(profiles["zones"]),
+        "term_names": list(model["term_names"]),
+        "comparison": comparison_contract,
+        "n_cases": len(cases),
+        "n_refused": len(cases) - len(scored),
+        "n_degenerate": sum(1 for c in scored if c["omnibus"]["degenerate"]),
+        "n_distinguishable": sum(1 for c in scored if c["omnibus"]["distinguishable"]),
+        # The headline of the whole feature, summarised so a change in it shows
+        # up as one line of a diff: how much of a comparison's uncertainty comes
+        # from the two players' own shooting rates rather than from the model.
+        "mean_profile_variance_share": (sum(shares) / len(shares)) if shares else 0.0,
+        "cases": cases,
+    }
+
+
+def write_compare_parity_fixture(paths: DataPaths) -> Path:
+    fixture = build_compare_parity_fixture(paths)
+    paths.parity.mkdir(parents=True, exist_ok=True)
+    path = paths.parity / "compare.json"
+    path.write_text(
+        json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
+
+
 def check_fixtures(paths: DataPaths) -> list[Drift]:
-    """Regenerate both fixtures and report every real disagreement.
+    """Regenerate every fixture and report each real disagreement.
 
     This replaces a `git diff` on the committed files, and the reason is in
     :data:`FLOAT_TOLERANCE`: one fixture is exact and the other is floating
@@ -480,6 +723,7 @@ def check_fixtures(paths: DataPaths) -> list[Drift]:
         ("lineups.json", build_parity_fixture, 0.0),
         ("selection.json", build_selection_parity_fixture, FLOAT_TOLERANCE),
         ("plays.json", build_plays_parity_fixture, FLOAT_TOLERANCE),
+        ("compare.json", build_compare_parity_fixture, FLOAT_TOLERANCE),
     ):
         path = paths.parity / name
         if not path.exists():

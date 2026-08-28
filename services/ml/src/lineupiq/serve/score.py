@@ -29,7 +29,22 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["ScoreRequest", "ScoreResult", "score_selection"]
+__all__ = ["RateOverrides", "ScoreRequest", "ScoreResult", "score_selection"]
+
+#: Per-table, per-player replacements for the four rate tables.
+#:
+#: ``{table_name: {player_id_as_str: rate}}``. This exists so that
+#: :mod:`lineupiq.serve.compare` can take a derivative of the **served**
+#: scorer with respect to a player's shooting rate, in exactly the way
+#: :mod:`lineupiq.serve.plays` already takes one with respect to a
+#: coefficient. The alternative -- differentiating a hand-derived softmax
+#: expression -- would be a second implementation of the model that could
+#: drift from this one, and it would drift silently, because a wrong
+#: gradient produces intervals of the wrong width rather than an error.
+#:
+#: With no overrides the arithmetic is unchanged down to the last bit, which
+#: is why the existing parity fixture is untouched by this parameter.
+RateOverrides = dict[str, dict[str, float]]
 
 #: The zone whose alternative-specific constant is fixed at zero. A conditional
 #: logit is invariant to adding a constant to every utility, so one alternative
@@ -79,6 +94,16 @@ class ScoreResult:
     #: How much of the shooter's mix is evidence rather than prior, from the
     #: Dirichlet-multinomial shrinkage. Low means the answer is mostly a prior.
     shooter_weight: float
+    #: The five lineup features, in the order their coefficients appear in
+    #: ``SELECTION_TERMS``: spacing, spacing_min, teammate_rim, opp_rim,
+    #: opp_three. Every one is a centred deviation from the league rate, which
+    #: is why dropping them all gives the league-average lineup.
+    #:
+    #: Exposed because :mod:`lineupiq.serve.compare` reports *which* of them a
+    #: swap moved, and recomputing them there would be a second implementation
+    #: of the aggregation -- including the `min`, which is the one most likely
+    #: to be got subtly wrong twice.
+    lineup_features: tuple[float, ...]
     #: The shot-mix shift, priced in points per 100 attempts.
     #:
     #: ``sum(delta_share * league_points_per_attempt)``, scaled by 100. This is
@@ -108,11 +133,36 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
+def _rate(
+    profiles: dict[str, Any],
+    overrides: RateOverrides | None,
+    table: str,
+    player: int,
+    fallback: float,
+) -> float:
+    """One player's rate from ``table``, with an override taking precedence.
+
+    The fallback is the league rate, and it is the reason a player below the
+    profile fit's attempt floor scores as exactly league-average rather than
+    raising. That is correct for scoring one lineup and wrong for comparing two,
+    so the comparison endpoint refuses such a player instead of reporting the
+    zero this fallback would produce.
+    """
+    key = str(player)
+    if overrides is not None:
+        table_overrides = overrides.get(table)
+        if table_overrides is not None and key in table_overrides:
+            return float(table_overrides[key])
+    return float(profiles[table].get(key, fallback))
+
+
 def score_selection(
     request: ScoreRequest,
     profiles: dict[str, Any],
     coefficients: list[float],
     term_names: list[str],
+    *,
+    rate_overrides: RateOverrides | None = None,
 ) -> ScoreResult:
     """Evaluate the conditional logit for one lineup.
 
@@ -151,9 +201,11 @@ def score_selection(
     spacing = spacing_min = teammate_rim = 0.0
     if teammates:
         three_rates = [
-            float(profiles["player_three_rate"].get(str(p), league_three)) for p in teammates
+            _rate(profiles, rate_overrides, "player_three_rate", p, league_three) for p in teammates
         ]
-        rim_rates = [float(profiles["player_rim_rate"].get(str(p), league_rim)) for p in teammates]
+        rim_rates = [
+            _rate(profiles, rate_overrides, "player_rim_rate", p, league_rim) for p in teammates
+        ]
         spacing = _mean(three_rates) - league_three
         spacing_min = min(three_rates) - league_three
         teammate_rim = _mean(rim_rates) - league_rim
@@ -163,7 +215,7 @@ def score_selection(
         opp_rim = (
             _mean(
                 [
-                    float(profiles["opp_rim_allowed"].get(str(p), league_rim))
+                    _rate(profiles, rate_overrides, "opp_rim_allowed", p, league_rim)
                     for p in request.defense
                 ]
             )
@@ -172,7 +224,7 @@ def score_selection(
         opp_three = (
             _mean(
                 [
-                    float(profiles["opp_three_allowed"].get(str(p), league_three))
+                    _rate(profiles, rate_overrides, "opp_three_allowed", p, league_three)
                     for p in request.defense
                 ]
             )
@@ -225,6 +277,7 @@ def score_selection(
         # dropping them *is* the league-average lineup. No second profile needed.
         baseline_mix=tuple(baseline),
         utilities=tuple(full),
+        lineup_features=(spacing, spacing_min, teammate_rim, opp_rim, opp_three),
         shooter_known=shooter_known,
         shooter_weight=shooter_weight,
         points_per_100=points_per_100,

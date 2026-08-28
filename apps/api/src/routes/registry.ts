@@ -145,6 +145,18 @@ export const ROUTES: readonly RouteSpec[] = [
   },
   {
     method: "POST",
+    path: "/lineups/compare",
+    summary:
+      "How swapping a player changes where a shooter shoots, with an interval on the difference.",
+    state: "live",
+    milestone: M4,
+    backedBy:
+      "the same closed-form conditional logit, contrasted between two lineups; " +
+      "delta-method intervals carrying both the 20x20 coefficient covariance and " +
+      "the two players' own cluster-robust shooting-rate errors",
+  },
+  {
+    method: "POST",
     path: "/lineups/allocate",
     summary: "Usage redistribution under a fixed possession budget.",
     state: "planned",

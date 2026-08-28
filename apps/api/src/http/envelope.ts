@@ -88,6 +88,24 @@ export type Meta = {
     parity_fixture: string;
     git_sha?: string | null;
   };
+  /**
+   * What a lineup comparison's uncertainty is actually made of.
+   *
+   * Separate from `support`, which is about this lineup's evidence, and from
+   * `ranking`, which is about the model's precision. This block answers a third
+   * question: of the interval you are being shown, how much comes from the
+   * fitted coefficients and how much from the two players' own shooting rates.
+   * On a typical comparison the second term is the larger one, and a reader who
+   * is not told that would reasonably assume the model was the whole story.
+   */
+  comparison?: {
+    profile_variance_share: number;
+    omnibus_critical_value: number;
+    degrees_of_freedom: number;
+    method: string;
+    parity_fixture: string;
+    git_sha?: string | null;
+  };
   warnings: string[];
 };
 
@@ -110,6 +128,7 @@ export function envelope<T>(
       ...(extra.support ? { support: extra.support } : {}),
       ...(extra.scoring ? { scoring: extra.scoring } : {}),
       ...(extra.ranking ? { ranking: extra.ranking } : {}),
+      ...(extra.comparison ? { comparison: extra.comparison } : {}),
     },
   };
 }

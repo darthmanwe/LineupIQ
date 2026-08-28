@@ -24,6 +24,7 @@ import { envelope } from "../http/envelope";
 import { insufficientSupport, problem } from "../http/problem";
 import { assessSupport, whatWouldHelp } from "../scoring/support";
 import { rankPlays } from "../scoring/plays";
+import { UnprofiledPlayerError, compareLineups } from "../scoring/compare";
 import { scoreSelection } from "../scoring/selection";
 import { LINEUP_SIZE, lineupHash } from "../scoring/lineupHash";
 import type { Bindings } from "../index";
@@ -31,6 +32,17 @@ import type { Bindings } from "../index";
 type App = Hono<{ Bindings: Bindings }>;
 
 /** Declared coverage. The one place scope is stated, mirroring `seasons.py`. */
+/**
+ * Weakest tier first. A comparison takes the weaker of its two sides, and an
+ * ordering written as data is harder to get backwards than a chain of
+ * conditionals.
+ */
+const TIER_ORDER: Record<"refused" | "directional" | "reportable", number> = {
+  refused: 0,
+  directional: 1,
+  reportable: 2,
+};
+
 const SEASONS = [
   { start_year: 2022, label: "2022-23" },
   { start_year: 2023, label: "2023-24" },
@@ -159,6 +171,105 @@ function parseScoreRequest(body: unknown): ScoreRequestInput | { error: string }
     shooterId,
     offense,
     defense,
+    teamId: optionalInt(raw.team_id),
+    season: optionalInt(raw.season),
+    secondsIntoPossession: seconds,
+    liveBall: raw.live_ball === true,
+    secondChance: raw.second_chance === true,
+    clutch: raw.clutch === true,
+  };
+}
+
+/**
+ * One side of a comparison: an explicit five, or the league-average preset.
+ *
+ * `null` means the league average, which needs no players. Every lineup feature
+ * in this model is a centred deviation from the league rate, so a lineup with
+ * all five lineup terms dropped *is* the average lineup -- there is no roster
+ * to name and no second profile to load.
+ */
+type ComparisonSide = { offense: number[]; defense: number[] } | null;
+
+type CompareRequestInput = {
+  shooterId: number;
+  left: { offense: number[]; defense: number[] };
+  right: ComparisonSide;
+  teamId: number | null;
+  season: number | null;
+  secondsIntoPossession: number | null;
+  liveBall: boolean;
+  secondChance: boolean;
+  clutch: boolean;
+};
+
+function parseCompareRequest(body: unknown): CompareRequestInput | { error: string } {
+  if (typeof body !== "object" || body === null) return { error: "body must be a JSON object" };
+  const raw = body as Record<string, unknown>;
+
+  const shooterId =
+    typeof raw.shooter_id === "number"
+      ? raw.shooter_id
+      : Number.parseInt(String(raw.shooter_id), 10);
+  if (!Number.isInteger(shooterId)) return { error: "`shooter_id` must be a player id" };
+
+  // Each side is parsed by reusing `parseScoreRequest`, so a comparison cannot
+  // accept a lineup the scorer would have rejected. Duplicating the rules here
+  // would be a second place for them to drift.
+  const side = (
+    value: unknown,
+    field: string
+  ): { offense: number[]; defense: number[] } | { error: string } => {
+    if (typeof value !== "object" || value === null) {
+      return { error: `\`${field}\` must be an object with \`offense\` and optional \`defense\`` };
+    }
+    const parsed = parseScoreRequest({
+      ...(value as Record<string, unknown>),
+      shooter_id: shooterId,
+    });
+    if ("error" in parsed) return { error: `\`${field}\`: ${parsed.error}` };
+    return { offense: parsed.offense, defense: parsed.defense };
+  };
+
+  const left = side(raw.left, "left");
+  if ("error" in left) return left;
+
+  let right: ComparisonSide;
+  const rawRight = raw.right;
+  if (typeof rawRight === "object" && rawRight !== null && "preset" in rawRight) {
+    const preset = (rawRight as Record<string, unknown>).preset;
+    if (preset !== "league_average") {
+      return { error: '`right.preset` must be "league_average"' };
+    }
+    right = null;
+  } else if (rawRight === undefined || rawRight === null) {
+    return {
+      error: '`right` is required: either {"offense": [5 ids]} or {"preset": "league_average"}',
+    };
+  } else {
+    const parsed = side(rawRight, "right");
+    if ("error" in parsed) return parsed;
+    right = parsed;
+  }
+
+  const optionalInt = (value: unknown): number | null => {
+    if (value === undefined || value === null) return null;
+    const parsed = typeof value === "number" ? value : Number.parseInt(String(value), 10);
+    return Number.isInteger(parsed) ? parsed : null;
+  };
+
+  let seconds: number | null = null;
+  if (raw.seconds_into_possession !== undefined && raw.seconds_into_possession !== null) {
+    const parsed = Number(raw.seconds_into_possession);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 24) {
+      return { error: "`seconds_into_possession` must be between 0 and 24" };
+    }
+    seconds = parsed;
+  }
+
+  return {
+    shooterId,
+    left,
+    right,
     teamId: optionalInt(raw.team_id),
     season: optionalInt(raw.season),
     secondsIntoPossession: seconds,
@@ -702,6 +813,309 @@ export function mountLive(app: App): void {
               critical_value: ranking.criticalValue,
               method: "delta method on the ridge sandwich; contiguous single-linkage bands",
               parity_fixture: "data/parity/plays.json",
+              git_sha: model.git_sha ?? null,
+            },
+            warnings,
+          }
+        )
+      );
+    } catch (error) {
+      return assetMissing(c, error);
+    }
+  });
+
+  /**
+   * How swapping a player changes where a shooter shoots.
+   *
+   * **This is not the trade projection, and the distinction is the point.**
+   * `/trades/simulate` returns 501 because its estimand -- a change in the
+   * receiving team's points per 100 possessions -- failed its own backtest:
+   * sign agreement 49.3%, and a projection error larger than the swing a
+   * placebo produces. That verdict is about the RAPM net-rating model.
+   *
+   * This route answers a different question with the other model. The
+   * conditional logit over shot selection has a measured out-of-sample gain on
+   * unseen five-man combinations and a 1e-9 parity contract, so "where does he
+   * shoot from" has an answer even though "is the team better" does not. Two
+   * estimands, two verdicts, two endpoints.
+   */
+  app.post("/lineups/compare", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return problem(c, {
+        status: 400,
+        code: "MALFORMED_BODY",
+        title: "Body is not JSON",
+        detail:
+          'Send {"shooter_id": id, "left": {"offense": [5 ids]}, ' +
+          '"right": {"offense": [5 ids]}} — or {"preset": "league_average"} as the right side.',
+      });
+    }
+
+    const request = parseCompareRequest(body);
+    if ("error" in request) {
+      return problem(c, {
+        status: 400,
+        code: "INVALID_REQUEST",
+        title: "Invalid comparison request",
+        detail: request.error,
+      });
+    }
+
+    try {
+      const [model, profiles, support, players] = await Promise.all([
+        loadSelectionModel(c.env),
+        loadSelectionProfiles(c.env),
+        loadSupport(c.env),
+        loadPlayers(c.env),
+      ]);
+
+      if (!model.available || !model.term_names || !model.coefficients) {
+        return problem(c, {
+          status: 503,
+          code: "MODEL_NOT_FITTED",
+          title: "The selection model has not been fitted",
+          detail: model.reason ?? "No selection run log is committed.",
+        });
+      }
+      if (!model.covariance || !model.ranking || !model.comparison) {
+        return problem(c, {
+          status: 503,
+          code: "NO_COVARIANCE",
+          title: "The served model cannot support a comparison",
+          detail:
+            "A comparison needs the standard error of a *difference* between two " +
+            "lineups, which requires the full covariance and the pre-registered " +
+            "comparison contract. Re-run `lineupiq selection` and `lineupiq export`.",
+        });
+      }
+
+      // Both sides are gated, and the weaker one governs. A difference cannot be
+      // better supported than the lineups it is a difference of, and taking the
+      // stronger side would let a well-evidenced lineup launder a claim about
+      // one nobody has seen.
+      const leftAssessment = assessSupport(request.left.offense, support, players);
+      const rightAssessment =
+        request.right === null ? null : assessSupport(request.right.offense, support, players);
+      const worst =
+        rightAssessment === null
+          ? leftAssessment
+          : TIER_ORDER[leftAssessment.tier] <= TIER_ORDER[rightAssessment.tier]
+            ? leftAssessment
+            : rightAssessment;
+
+      if (worst.tier === "refused") {
+        return insufficientSupport(c, {
+          detail:
+            "One of these two lineups does not have enough recorded evidence to say " +
+            "anything about how it changes this shooter's shot selection, so the " +
+            "difference between them cannot be reported either.",
+          nPossessions: worst.possessions,
+          threshold: worst.thresholds.possessions,
+          shortfallPlayers: worst.shortfallPlayers,
+          whatWouldHelp: whatWouldHelp(worst),
+        });
+      }
+
+      const context = {
+        teamId: request.teamId,
+        season: request.season,
+        secondsIntoPossession: request.secondsIntoPossession,
+        liveBall: request.liveBall,
+        secondChance: request.secondChance,
+        clutch: request.clutch,
+      };
+      const left = { shooterId: request.shooterId, ...request.left, ...context };
+      const right =
+        request.right === null
+          ? null
+          : { shooterId: request.shooterId, ...request.right, ...context };
+
+      let comparison;
+      try {
+        comparison = compareLineups(
+          left,
+          right,
+          profiles,
+          {
+            available: true,
+            term_names: model.term_names,
+            coefficients: model.coefficients,
+            covariance: model.covariance,
+            ranking: model.ranking,
+            sign_audit: model.sign_audit ?? null,
+          },
+          model.comparison
+        );
+      } catch (error) {
+        if (error instanceof UnprofiledPlayerError) {
+          // Not a 500 and not a generic refusal. These players have no fitted
+          // shooting rate at all, so they silently inherit the league rate --
+          // and a comparison involving them comes back as exactly zero, which
+          // reads like a finding and is a missing row.
+          return problem(c, {
+            status: 422,
+            code: "NO_FITTED_RATE",
+            title: "A player in this comparison has no fitted shooting rate",
+            detail:
+              "A comparison is driven by the difference between two players' shooting " +
+              "rates. These players are below the attempt floor the profile fit uses, " +
+              "so they carry the league rate rather than one of their own, and the " +
+              "answer would be exactly zero for a reason nothing in the response could " +
+              "show you.",
+            extensions: {
+              players: error.players.map((id) => ({
+                player_id: String(id),
+                name: players.players[String(id)]?.name ?? null,
+                attempts: players.players[String(id)]?.attempts ?? 0,
+              })),
+              what_would_help:
+                "Swap in a player with more recorded attempts, or read " +
+                "/api/players/{id}/zones to see how little evidence these ones carry.",
+            },
+          });
+        }
+        throw error;
+      }
+
+      // Which one player changed, when exactly one did. Detected rather than
+      // taken from the request, so a client cannot mislabel it.
+      let swap: { out: string; in: string } | null = null;
+      if (request.right !== null) {
+        const gone = request.left.offense.filter((p) => !request.right!.offense.includes(p));
+        const arrived = request.right.offense.filter((p) => !request.left.offense.includes(p));
+        if (gone.length === 1 && arrived.length === 1) {
+          swap = { out: String(gone[0]), in: String(arrived[0]) };
+        }
+      }
+
+      const warnings: string[] = [];
+      if (!comparison.omnibus.distinguishable && !comparison.omnibus.degenerate) {
+        warnings.push(
+          "The two lineups do not move this shooter's shot mix by more than the " +
+            "evidence can resolve. Read the per-zone numbers as noise, not as small effects."
+        );
+      }
+      if (comparison.omnibus.degenerate) {
+        warnings.push(
+          "These two lineups produce identical predictions, so there is nothing to test."
+        );
+      }
+      if (worst.tier === "directional") {
+        warnings.push(
+          "At least one of these lineups is below the reportable possession floor. The " +
+            "direction of each shift is supported; the priced magnitudes are not, and are nulled."
+        );
+      }
+      if (comparison.profileVarianceShare > 0.5) {
+        const share = (comparison.profileVarianceShare * 100).toFixed(0);
+        warnings.push(
+          `${share}% of this interval's width comes from how well these players' own ` +
+            "shooting rates are known, not from the model. The fitted coefficients are " +
+            "far better determined than any particular pair of players."
+        );
+      }
+      if (comparison.argminUnstable) {
+        warnings.push(
+          "Two teammates have nearly identical three-point rates, so the worst-spacer " +
+            "term sits on the kink of its own minimum and its derivative is a subgradient."
+        );
+      }
+      const contradicted = comparison.mechanism.filter(
+        (term) => term.verdict === "DISAGREES" && term.featureDelta !== 0
+      );
+      for (const term of contradicted) {
+        warnings.push(
+          `\`${term.term}\` moved this result and its pre-registered sign was ` +
+            "contradicted by the fit. The direction below is what the data says, not " +
+            "what the hypothesis predicted - see /api/models/selection."
+        );
+      }
+      if (request.right !== null && request.left.defense.length === 0) {
+        warnings.push(
+          "No defence was given, so both opponent terms are zero on each side and any " +
+            "difference here is purely offensive."
+        );
+      }
+
+      const reportable = worst.tier === "reportable";
+      return c.json(
+        envelope(
+          c,
+          {
+            left_hash: leftAssessment.lineupHash,
+            right_hash: rightAssessment === null ? null : rightAssessment.lineupHash,
+            reference: request.right === null ? "league_average" : "lineup",
+            shooter: {
+              player_id: String(request.shooterId),
+              name: players.players[String(request.shooterId)]?.name ?? null,
+            },
+            swap,
+            // The headline: did the mix move at all, on the two parameters a
+            // lineup has. Read this before any per-zone number -- nine zone
+            // tests at 80% will separate something on most comparisons.
+            omnibus: {
+              statistic: comparison.omnibus.statistic,
+              degrees_of_freedom: comparison.omnibus.degreesOfFreedom,
+              critical_value: comparison.omnibus.criticalValue,
+              distinguishable: comparison.omnibus.distinguishable,
+              degenerate: comparison.omnibus.degenerate,
+              rim_shift: comparison.omnibus.rimShift,
+              three_shift: comparison.omnibus.threeShift,
+              rim_shift_error: comparison.omnibus.rimShiftError,
+              three_shift_error: comparison.omnibus.threeShiftError,
+            },
+            zones: comparison.zones.map((zone) => ({
+              zone_id: zone.zone,
+              // Survives a directional tier, exactly as `/lineups/score`'s
+              // per-zone `delta` does. It is the model's output rather than the
+              // priced product claim.
+              delta_share: zone.deltaShare,
+              share_left: reportable ? zone.shareLeft : null,
+              share_right: reportable ? zone.shareRight : null,
+              points_per_100: reportable ? zone.pointsPer100 : null,
+              points_direction:
+                zone.pointsPer100 > 0 ? "gain" : zone.pointsPer100 < 0 ? "loss" : "flat",
+              // The width is about the model's precision; the endpoints would
+              // hand back the nulled centre as `(lo + hi) / 2`.
+              standard_error: zone.standardError,
+              interval: reportable ? zone.interval : null,
+              variance_share: {
+                coefficients: zone.varianceCoefficients,
+                profiles: zone.varianceProfiles,
+              },
+            })),
+            // Which lineup features the swap actually moved, with the verdict
+            // the pre-registration gave each one.
+            mechanism: comparison.mechanism.map((term) => ({
+              term: term.term,
+              feature_left: term.featureLeft,
+              feature_right: term.featureRight,
+              feature_delta: term.featureDelta,
+              coefficient: term.coefficient,
+              expected_sign: term.expectedSign,
+              verdict: term.verdict,
+            })),
+          },
+          {
+            snapshot: c.env.SNAPSHOT ?? null,
+            support: {
+              lineup_possessions: worst.possessions,
+              min_player_attempts: worst.minPlayerAttempts,
+              tier: worst.tier,
+              counterfactual: worst.counterfactual,
+              thresholds: worst.thresholds,
+            },
+            comparison: {
+              profile_variance_share: comparison.profileVarianceShare,
+              omnibus_critical_value: comparison.omnibus.criticalValue,
+              degrees_of_freedom: comparison.omnibus.degreesOfFreedom,
+              method:
+                "delta method on the ridge sandwich plus cluster-robust rate errors; " +
+                "two-parameter Wald test on the rim and three pulls",
+              parity_fixture: "data/parity/compare.json",
               git_sha: model.git_sha ?? null,
             },
             warnings,

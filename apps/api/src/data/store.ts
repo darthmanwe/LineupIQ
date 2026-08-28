@@ -94,6 +94,18 @@ export type SelectionModelData = {
   >;
   n_shots?: number;
   seasons?: number[];
+  /**
+   * The pre-registered comparison contract, shipped for the same reason the
+   * ranking one is: the Worker has no incomplete gamma function, so the
+   * chi-square critical value is resolved once in Python and travels with
+   * the model.
+   */
+  comparison?: {
+    confidence: number;
+    critical_value: number;
+    omnibus_critical_value: number;
+    min_profile_attempts: number;
+  } | null;
 };
 
 /** Thrown when an asset the caller needs is not deployed. */

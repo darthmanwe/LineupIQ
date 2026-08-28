@@ -88,6 +88,23 @@ const SCORING_ROUTES: Array<{ path: string; body: (players: number[]) => unknown
     path: "/lineups/optimal-plays",
     body: (players) => ({ shooter_id: players[0], offense: players, defense: [] }),
   },
+  {
+    // Compared against the league average rather than a second five, and the
+    // choice is forced by the shape of this list: a body builder is handed one
+    // lineup, so any synthesised opponent would carry its own tier and the
+    // sweep would stop knowing which side it was testing. The league-average
+    // arm has no roster and therefore no support of its own, so the tier here
+    // is exactly this lineup's.
+    //
+    // The two-lineup gate -- that the weaker of the two sides governs -- is
+    // covered in `live.test.ts`, where both sides can be chosen.
+    path: "/lineups/compare",
+    body: (players) => ({
+      shooter_id: players[0],
+      left: { offense: players, defense: [] },
+      right: { preset: "league_average" },
+    }),
+  },
 ];
 
 /** Routes that take a lineup but make no claim about it, so support cannot apply. */
@@ -195,6 +212,75 @@ describe("a directional lineup keeps its direction and loses its magnitude", () 
       const total = body.data.zones.reduce((a, z) => a + z.delta, 0);
       expect(Math.abs(total)).toBeLessThan(1e-9);
 
+      expect(body.meta.warnings.join(" ")).toMatch(/direction/i);
+    }
+  });
+
+  it("/lineups/compare keeps its direction and loses its priced magnitude", async () => {
+    // The same split the other two routes make, on a difference rather than a
+    // level: the per-zone `delta_share` is the model's own output and survives,
+    // the priced `points_per_100` is the product claim and does not.
+    //
+    // The omnibus survives too, and for the same reason the ranking does one
+    // route down: whether the two lineups separate is a statement about how
+    // precisely twenty coefficients were fitted, not about how many possessions
+    // these particular five have played.
+    for (const players of lineups) {
+      const response = await post("/lineups/compare", {
+        shooter_id: players[0],
+        left: { offense: players, defense: [] },
+        right: { preset: "league_average" },
+      });
+      if (response.status === 422) {
+        // A player with no fitted shooting rate at all. Refusing is correct and
+        // is asserted in its own test; there is no magnitude to check.
+        const refusal = (await response.json()) as { code: string };
+        expect(refusal.code).toBe("NO_FITTED_RATE");
+        continue;
+      }
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        data: {
+          omnibus: { statistic: number; distinguishable: boolean; degrees_of_freedom: number };
+          zones: Array<{
+            delta_share: number;
+            share_left: number | null;
+            share_right: number | null;
+            points_per_100: number | null;
+            interval: [number, number] | null;
+            standard_error: number;
+            variance_share: { coefficients: number; profiles: number };
+          }>;
+        };
+        meta: { support: { tier: string }; warnings: string[]; comparison?: unknown };
+      };
+      if (body.meta.support.tier === "reportable") continue;
+
+      expect(body.data.zones.length).toBeGreaterThan(0);
+      for (const zone of body.data.zones) {
+        expect(zone.points_per_100, `points on ${players.join(",")}`).toBeNull();
+        expect(zone.interval, `interval on ${players.join(",")}`).toBeNull();
+        expect(zone.share_left).toBeNull();
+        expect(zone.share_right).toBeNull();
+        expect(Number.isFinite(zone.delta_share)).toBe(true);
+        expect(Number.isFinite(zone.standard_error)).toBe(true);
+        // Both variance components ship at every tier. They are what the
+        // interval would have been made of, and the endpoint's whole argument
+        // is that the second one is usually the larger.
+        expect(Number.isFinite(zone.variance_share.coefficients)).toBe(true);
+        expect(Number.isFinite(zone.variance_share.profiles)).toBe(true);
+      }
+
+      // Shares live on a simplex, so the deltas must cancel.
+      const total = body.data.zones.reduce((a, z) => a + z.delta_share, 0);
+      expect(Math.abs(total)).toBeLessThan(1e-9);
+
+      expect(body.data.omnibus.degrees_of_freedom).toBe(2);
+      expect(Number.isFinite(body.data.omnibus.statistic)).toBe(true);
+      // The meta block has to actually survive `envelope()`'s whitelist. It was
+      // added to the type and to the spread; a block present in one and not the
+      // other is dropped silently, which has happened before.
+      expect(body.meta.comparison).toBeDefined();
       expect(body.meta.warnings.join(" ")).toMatch(/direction/i);
     }
   });

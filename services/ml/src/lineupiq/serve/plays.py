@@ -60,9 +60,17 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from lineupiq.serve.score import ScoreRequest, score_selection
+from lineupiq.serve.score import RateOverrides, ScoreRequest, score_selection
 
-__all__ = ["Play", "PlayRanking", "contribution_gradients", "rank_plays"]
+__all__ = [
+    "Play",
+    "PlayRanking",
+    "contrast_shares",
+    "contribution_gradients",
+    "quadratic_form",
+    "rank_plays",
+    "standard_error",
+]
 
 #: Relative step for the central difference, identical in the TypeScript mirror.
 #:
@@ -121,6 +129,40 @@ class PlayRanking:
     ties_spanning_bands: int
 
 
+def contrast_shares(
+    left: ScoreRequest,
+    right: ScoreRequest | None,
+    profiles: dict[str, Any],
+    coefficients: list[float],
+    term_names: list[str],
+    *,
+    rate_overrides: RateOverrides | None = None,
+) -> list[float]:
+    """Per-zone difference in predicted shot share between two lineups.
+
+    ``right=None`` means "the same shooter with every lineup term at the league
+    average", which is :attr:`ScoreResult.baseline_mix` and needs no second
+    scoring call -- every lineup term is a centred deviation, so dropping them
+    *is* the league-average lineup.
+
+    That is not a special case bolted on for the comparison endpoint: it is the
+    quantity :func:`rank_plays` has always ranked. Writing both through one
+    function is what makes ``compare(L, league_average)`` and
+    ``/lineups/score``'s per-zone ``delta`` the same number by construction
+    rather than by two implementations agreeing.
+    """
+    scored = score_selection(
+        left, profiles, coefficients, term_names, rate_overrides=rate_overrides
+    )
+    if right is None:
+        reference = scored.baseline_mix
+    else:
+        reference = score_selection(
+            right, profiles, coefficients, term_names, rate_overrides=rate_overrides
+        ).mix
+    return [m - b for m, b in zip(scored.mix, reference, strict=True)]
+
+
 def _contribution(
     request: ScoreRequest,
     profiles: dict[str, Any],
@@ -128,12 +170,9 @@ def _contribution(
     term_names: list[str],
 ) -> list[float]:
     """Per-zone priced contribution, in points per 100 attempts."""
-    result = score_selection(request, profiles, coefficients, term_names)
+    deltas = contrast_shares(request, None, profiles, coefficients, term_names)
     zone_points = [float(v) for v in profiles["zone_points"]]
-    return [
-        100.0 * (m - b) * p
-        for m, b, p in zip(result.mix, result.baseline_mix, zone_points, strict=True)
-    ]
+    return [100.0 * d * p for d, p in zip(deltas, zone_points, strict=True)]
 
 
 def contribution_gradients(
@@ -164,7 +203,7 @@ def contribution_gradients(
     return gradients
 
 
-def _quadratic_form(left: list[float], covariance: list[list[float]], right: list[float]) -> float:
+def quadratic_form(left: list[float], covariance: list[list[float]], right: list[float]) -> float:
     """``left' Sigma right``, accumulated in a fixed order.
 
     Written as an explicit double loop rather than as two matrix products,
@@ -180,7 +219,7 @@ def _quadratic_form(left: list[float], covariance: list[list[float]], right: lis
     return total
 
 
-def _standard_error(quadratic: float) -> float:
+def standard_error(quadratic: float) -> float:
     # A tiny negative comes out of the delta method when the true variance is
     # near zero and the covariance is only numerically positive semi-definite.
     # Clamping at zero is right; taking an absolute value would turn a flat
@@ -214,7 +253,7 @@ def rank_plays(
     gradients = contribution_gradients(request, profiles, coefficients, term_names)
 
     errors = [
-        _standard_error(_quadratic_form(gradients[z], covariance, gradients[z]))
+        standard_error(quadratic_form(gradients[z], covariance, gradients[z]))
         for z in range(len(zones))
     ]
 
@@ -238,7 +277,7 @@ def rank_plays(
             pairs_compared += 1
             difference = contributions[a] - contributions[b]
             delta = [gradients[a][j] - gradients[b][j] for j in range(len(coefficients))]
-            joint = _standard_error(_quadratic_form(delta, covariance, delta))
+            joint = standard_error(quadratic_form(delta, covariance, delta))
             separates = abs(difference) > critical_value * joint
             if separates:
                 distinguishable.add((a, b))

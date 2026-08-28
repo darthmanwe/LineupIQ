@@ -396,6 +396,28 @@ def _ranking_contract() -> dict[str, float]:
     }
 
 
+def _comparison_contract() -> dict[str, float]:
+    """The pre-registered comparison level and its chi-square critical value.
+
+    Shipped with the model for the same reason the ranking contract is: the
+    Worker has no incomplete gamma function, and adding one would be a second
+    place this number could be wrong. The per-zone `critical_value` is reused
+    from the ranking contract rather than duplicated -- both mechanisms report
+    at the same pre-registered 80%, and two constants that must agree are one
+    constant with an extra chance to disagree.
+    """
+    from lineupiq.models.support import load_thresholds
+
+    thresholds = load_thresholds()
+    ranking = _ranking_contract()
+    return {
+        "confidence": float(thresholds.comparison_omnibus_confidence),
+        "critical_value": float(ranking["critical_value"]),
+        "omnibus_critical_value": float(thresholds.comparison_omnibus_critical_value),
+        "min_profile_attempts": float(thresholds.comparison_min_profile_attempts),
+    }
+
+
 def export_selection_model(paths: DataPaths) -> dict[str, Any]:
     """The served selection model: coefficients plus the per-player mixes.
 
@@ -440,6 +462,11 @@ def export_selection_model(paths: DataPaths) -> dict[str, Any]:
         # normal CDF, and adding one would be a second place this number could be
         # wrong.
         "ranking": _ranking_contract(),
+        # The comparison endpoint's own pre-registered contract. Separate from
+        # `ranking` because the omnibus is a chi-square on two degrees of
+        # freedom rather than a normal quantile, and conflating them would
+        # make one mechanism's level silently govern the other's.
+        "comparison": _comparison_contract(),
         "observed_mix": {k: _round(v) for k, v in (model.get("observed_mix") or {}).items()},
         "sign_audit": model.get("sign_audit", {}),
         "n_shots": run.get("n_shots"),
@@ -538,6 +565,23 @@ def export_selection_profiles(paths: DataPaths) -> dict[str, Any]:
         },
         "opp_rim_allowed": {
             str(pid): _round(v) for pid, v in sorted(profiles.opp_rim_allowed.items())
+        },
+        # Cluster-robust errors on the four rate tables above, clustered on
+        # game. Only /lineups/compare reads them, and it refuses any player they
+        # do not cover -- a comparison is driven by the difference between two
+        # players' rates, so serving it without an error on those rates would
+        # report a coefficient interval as though it were the whole uncertainty.
+        "player_three_rate_se": {
+            str(pid): _round(v) for pid, v in sorted(profiles.player_three_rate_se.items())
+        },
+        "player_rim_rate_se": {
+            str(pid): _round(v) for pid, v in sorted(profiles.player_rim_rate_se.items())
+        },
+        "opp_three_allowed_se": {
+            str(pid): _round(v) for pid, v in sorted(profiles.opp_three_allowed_se.items())
+        },
+        "opp_rim_allowed_se": {
+            str(pid): _round(v) for pid, v in sorted(profiles.opp_rim_allowed_se.items())
         },
         "league_three_rate": _round(profiles.league_three_rate),
         "league_rim_rate": _round(profiles.league_rim_rate),
