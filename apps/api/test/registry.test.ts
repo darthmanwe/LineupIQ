@@ -9,6 +9,7 @@ import layout from "../../web/src/app/layout.tsx?raw";
 import lineupPage from "../../web/src/app/lineup/page.tsx?raw";
 import qualityPage from "../../web/src/app/quality/page.tsx?raw";
 import tradePage from "../../web/src/app/trade/page.tsx?raw";
+import notYetBacked from "../../web/src/components/NotYetBacked.tsx?raw";
 
 import app from "../src/index";
 import { PROBLEM_CONTENT_TYPE } from "../src/http/problem";
@@ -183,6 +184,49 @@ const PAGES: Array<[string, string]> = [
  */
 const strip = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+describe("every page owns exactly one h1", () => {
+  /**
+   * The heading outline, guarded because it went wrong quietly.
+   *
+   * The banner's wordmark was an `<h1>`, so all five pages opened with the same
+   * level-one heading -- and `lineup`, `trade` and `quality` each added one of
+   * their own, so those carried two. Neither is a crash and nothing renders
+   * wrong; it is simply a document outline that tells a screen-reader user
+   * "LineupIQ" on every page and never says which page they are on.
+   *
+   * The rule now: the banner is not a heading, and each page contributes
+   * exactly one `<h1>` describing itself. `/evidence` gets its one from
+   * `NotYetBacked`, which is why that component is counted here rather than
+   * being assumed to be a mere card.
+   *
+   * Counted from source rather than from rendered HTML because nothing in CI
+   * runs a browser, and a guard that only exists in a manual pass is a guard
+   * that stops running.
+   */
+  const count = (source: string): number => (strip(source).match(/<h1[\s>]/g) ?? []).length;
+
+  it("the banner contributes none", () => {
+    expect(count(layout), "layout.tsx must not carry an <h1>").toBe(0);
+    expect(strip(layout)).toMatch(/className="wordmark"/);
+  });
+
+  it.each([
+    ["overview", overview, 1],
+    ["lineup", lineupPage, 1],
+    ["trade", tradePage, 1],
+    ["quality", qualityPage, 1],
+    // Its heading lives in `NotYetBacked`, asserted separately below.
+    ["evidence", evidencePage, 0],
+  ])("%s contributes %i", (_name, source, expected) => {
+    expect(count(source)).toBe(expected);
+  });
+
+  it("NotYetBacked supplies the evidence page's heading", () => {
+    expect(count(notYetBacked)).toBe(1);
+    expect(strip(evidencePage)).toMatch(/<NotYetBacked/);
+  });
+});
 
 describe("no surface claims the project is unbuilt", () => {
   /**

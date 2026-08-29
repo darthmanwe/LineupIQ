@@ -23,7 +23,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="shell">
           <header className="masthead">
-            <h1>LineupIQ</h1>
+            {/*
+              The wordmark is not a heading.
+
+              It used to be an `<h1>`, which put the same level-one heading on
+              every page of the site -- and three pages then added an `<h1>` of
+              their own, so those carried two. A heading outline that says
+              "LineupIQ" first on all five pages tells a screen-reader user
+              nothing about which page they are on, which is the one job the
+              outline has.
+
+              So the site name is a styled paragraph in the banner, and each
+              page owns exactly one `<h1>` describing itself.
+              `registry.test.ts` fails the build if that ever stops being true.
+            */}
+            <p className="wordmark">LineupIQ</p>
             <p>
               Given any five NBA players, which shots each should take — with the possession count
               behind every number, and an explicit refusal when there isn&rsquo;t one.

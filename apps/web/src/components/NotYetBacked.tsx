@@ -37,7 +37,13 @@ export function NotYetBacked({
   return (
     <section className="card pending">
       <span className="tag">not yet backed</span>
-      <h2 style={{ marginTop: "0.6rem" }}>{page}</h2>
+      {/*
+        An `<h1>`, because this card *is* the page it is rendered on -- it names
+        the surface and nothing else on that page outranks it. The banner's
+        wordmark is deliberately not a heading, so this is the document's only
+        level one.
+      */}
+      <h1 style={{ marginTop: "0.6rem" }}>{page}</h1>
       <p style={{ marginBottom: 0 }}>{willServe}</p>
 
       <dl className="spec">

@@ -77,10 +77,13 @@ kbd {
   padding-bottom: 1.25rem;
 }
 
-.masthead h1 {
+/* The site name in the banner. A paragraph, not a heading -- see layout.tsx. */
+.masthead .wordmark {
   font-size: 1.35rem;
+  font-weight: 700;
   margin: 0 0 0.35rem;
   letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .masthead p {
@@ -125,7 +128,8 @@ nav.tabs a:hover {
   background: var(--warn-soft);
 }
 
-.pending h2 {
+/* `NotYetBacked` is a page-level card, so its title is that page's `<h1>`. */
+.pending h1 {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
 }

@@ -19,6 +19,16 @@
 export default function OverviewPage() {
   return (
     <>
+      <style>{`
+        h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+        .lede { color: var(--muted); max-width: 44rem; margin: 0 0 1.5rem; }
+      `}</style>
+      <h1>What this is, what it found, and where it stops</h1>
+      <p className="lede">
+        The tool, the result that came back opposite to what was predicted, the state of the build,
+        and the questions this refuses to answer &mdash; in that order.
+      </p>
+
       <section className="card">
         <h2 style={{ marginTop: 0 }}>What this does</h2>
         <p>
