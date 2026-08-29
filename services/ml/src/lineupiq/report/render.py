@@ -976,6 +976,70 @@ def _comparison(ctx: RenderContext) -> str:
     return "\n".join(lines)
 
 
+def _scale(ctx: RenderContext) -> str:
+    """How big the thing is, counted rather than remembered.
+
+    This line was typed, and it drifted exactly the way typed numbers do: it
+    claimed 341 tests and 19,700 lines while the repository had grown to 502 and
+    23,566. Nothing caught it, because the generated-block machinery only ever
+    covered *results* -- and a stale scale claim in the tech-stack table is the
+    same category of wrong as a stale metric, on the page a reviewer reads first.
+
+    Only exactly-countable things go in here. **Test functions, not tests**: a
+    `@pytest.mark.parametrize` or an `it.each` declares one function that fans
+    out into many cases at run time, so the executed count is roughly double the
+    declared one and cannot be derived without running both suites. Reporting
+    the number that can be checked from the source, and naming the fan-out, is
+    better than reporting a bigger number that has to be trusted.
+    """
+    import re as _re
+
+    def walk(directories: list[str], suffixes: tuple[str, ...]) -> list[Path]:
+        found: list[Path] = []
+        for directory in directories:
+            base = ctx.paths.root / directory
+            if not base.exists():
+                continue
+            for path in sorted(base.rglob("*")):
+                if path.suffix not in suffixes:
+                    continue
+                if "node_modules" in path.parts or "__pycache__" in path.parts:
+                    continue
+                found.append(path)
+        return found
+
+    def lines(paths: list[Path]) -> int:
+        return sum(len(p.read_text(encoding="utf-8", errors="replace").splitlines()) for p in paths)
+
+    source = walk(["services/ml/src", "apps/api/src", "apps/web/src"], (".py", ".ts", ".tsx"))
+    tests = walk(["services/ml/tests", "apps/api/test"], (".py", ".ts"))
+    if not source:
+        return "\n_Source tree not found from this working directory._\n"
+
+    declared = 0
+    for path in tests:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if path.suffix == ".py":
+            declared += len(_re.findall(r"^def test_", text, _re.M))
+        else:
+            declared += len(_re.findall(r"\b(?:it|test)(?:\.each)?\s*\(", text))
+
+    registry = (ctx.paths.root / "apps" / "api" / "src" / "routes" / "registry.ts").read_text(
+        encoding="utf-8"
+    )
+    live = registry.count('state: "live"')
+    planned = registry.count('state: "planned"')
+    withdrawn = registry.count('state: "withdrawn"')
+
+    return (
+        f"\n**Scale:** {lines(source):,} lines of Python and TypeScript across "
+        f"{len(source)} files, {lines(tests):,} lines of tests across {len(tests)}. "
+        f"{declared} test functions, which parametrisation and `it.each` fan out into "
+        f"roughly twice that many cases at run time. "
+        f"{live} live endpoints, {planned} declared and withheld, {withdrawn} withdrawn.\n"
+    )
+
+
 def _retrieval(ctx: RenderContext) -> str:
     """The corpus ablation: does document design actually matter?"""
     run = _read_json(ctx.paths.runs / "retrieval" / "ablation.json")
@@ -1132,6 +1196,7 @@ RENDERERS = {
     "results.rapm": _rapm,
     "results.trade": _trade,
     "results.comparison": _comparison,
+    "results.scale": _scale,
     "results.retrieval": _retrieval,
     "results.groundedness": _groundedness,
     "results.dataquality": _data_quality,

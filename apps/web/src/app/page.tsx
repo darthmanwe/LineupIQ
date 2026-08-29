@@ -3,8 +3,8 @@
  *
  * This page went stale and stayed stale, which is worth recording because it is
  * the most damaging kind of staleness in the project. It said "Milestone 1 of 8
- * — every analytics endpoint returns 501" for the entire time sixteen endpoints
- * were live and both models were fitted. Every published *number* in this
+ * — every analytics endpoint returns 501" for the entire time most of the
+ * registry was live and both models were fitted. Every published *number* in this
  * repository is generated from a run log and re-derived in CI, and none of that
  * machinery covers prose. A visitor's first screen said the project was not
  * built.

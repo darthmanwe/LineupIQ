@@ -150,8 +150,9 @@ Zones the data cannot separate share a rank. When nothing separates, the respons
 | **CI** | 14 jobs on GitHub Actions — 21 with the OS × version matrix, Windows × Linux, Python 3.11–3.13, Node 22/24 | Offline and free by default; a separate workflow refits both models and asserts every metric reproduces |
 | **Optional** | Snowflake DDL generated from the same table registry, `sqlfluff`-linted | Entirely off the demo path — real, versioned, and honest about what was executed |
 
-**Scale:** ~19,700 lines of Python and TypeScript, ~5,300 lines of tests, 341 tests
-(237 Python, 104 in `workerd`), 16 live endpoints.
+<!-- lineupiq:begin id=results.scale -->
+**Scale:** 23,631 lines of Python and TypeScript across 84 files, 6,650 lines of tests across 28. 291 test functions, which parametrisation and `it.each` fan out into roughly twice that many cases at run time. 17 live endpoints, 4 declared and withheld, 2 withdrawn.
+<!-- lineupiq:end id=results.scale -->
 
 ---
 
@@ -218,6 +219,8 @@ silently.
 
 | | |
 | --- | --- |
+| ![A swap, priced in shot selection](docs/media/07-compare.png) | ![What the interval is made of](docs/media/08-variance-split.png) |
+| Swap one player and read what it does to a shooter's shot mix — with the contradicted pre-registration shown next to the term that moved. | Most of the interval is how well the two players' own rates are known, not the model. Said out loud rather than in a tooltip. |
 | ![Data quality gates](docs/media/05-quality.png) | ![The withheld trade endpoint](docs/media/06-trade.png) |
 | Every data-quality gate with its threshold and verdict. | The endpoint that refuses to exist, and publishes why. |
 
@@ -606,6 +609,8 @@ possessions against everyone else's 20,000-plus.
 form, evaluated twice, differenced. Either side can be the league-average lineup, which needs
 no roster — every lineup feature is a centred deviation from the league rate, so dropping all
 five *is* the average lineup.
+
+![A swap, priced in shot selection](docs/media/07-compare.png)
 
 Three things about it are worth more than the feature.
 
